@@ -1,11 +1,18 @@
-#include "context/freenect_types.h"
 #include "graphics/glcontext.h"
 #include "graphics/glfw_types.h"
+#include "context/freenect_types.h"
+
+#include <iostream>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "deps/stb/stb_image.h"
 #include <malloc.h>
 #include <string.h>
+#include <libfreenect2/libfreenect2.hpp>
+#include <libfreenect2/frame_listener_impl.h>
+#include <libfreenect2/packet_pipeline.h>
+#include <libfreenect2/registration.h>
+#include <libfreenect2/logger.h>
 
 #include "deps/glm/glm/glm.hpp"
 #include "deps/glm/glm/gtc/type_ptr.hpp"
@@ -94,22 +101,31 @@ int main(int argv, char** argc) try {
     glfwSetFramebufferSizeCallback(gctxt.window,glfw_fb_resize);
     glfwSetKeyCallback(gctxt.window,glfw_keyboard_event);
 
+	libfreenect2::setGlobalLogger(libfreenect2::createConsoleLogger(libfreenect2::Logger::Debug));
+    libfreenect2::Freenect2 manager;
+	fprintf(stderr,"Devices connected: %i\n",manager.enumerateDevices());
+	libfreenect2::PacketPipeline *pipeline = 0;
+	libfreenect2::Freenect2Device* device = 0;
+	pipeline = new libfreenect2::CpuPacketPipeline();
+	libfreenect2::SyncMultiFrameListener listener(libfreenect2::Frame::Color 
+		| libfreenect2::Frame::Depth);
+	fprintf(stderr,"Enumerating devices\n");
+
+	std::string serial = manager.getDefaultDeviceSerialNumber();
+	printf("Serial: %s\n",serial.c_str());
+    device = manager.openDevice(serial);
+	device->setColorFrameListener(&listener);
+	device->setIrAndDepthFrameListener(&listener);
+    device->start();
+
+  	std::cout << "device serial: " << device->getSerialNumber() << std::endl;
+  	std::cout << "device firmware: " << device->getFirmwareVersion() << std::endl;
+
+
     if(!flextInit(gctxt.window))
         throw std::runtime_error("Failed to load Glad!");
 
-//    KineBot::FreenectContext ctxt;
-
-//    libfreenect2::SyncMultiFrameListener listener(libfreenect2::Frame::Depth|libfreenect2::Frame::Color);
-//    ctxt.device->setColorFrameListener(&listener);
-//    ctxt.device->setIrAndDepthFrameListener(&listener);
-//    ctxt.device->start();
-
-//    libfreenect2::FrameMap frames;
-
-//    listener.waitForNewFrame(frames);
-//    d = frames[libfreenect2::Frame::Depth];
-//    listener.release(frames);
-//    libfreenect2::Frame *d;
+	fprintf(stderr,"Hello\n");
 
     glClearColor(0.0f,0.f,0.f,1.f);
     glEnable(GL_BLEND);
@@ -154,7 +170,7 @@ int main(int argv, char** argc) try {
     for(int y=0;y<coord_h;y++)
         for(int x=0;x<coord_w;x++)
         {
-            glm::vec2 v(x/50.0,y/50.0);
+            glm::vec2 v(x/50.0-coord_w/100.0,y/50.0-coord_h/100.0);
             glm::vec2 t((float)x/(float)coord_w,(float)y/(float)coord_h);
             memcpy(&coords[y*coord_w+x],&v,sizeof(glm::vec2));
             memcpy(&texcoords[y*coord_w+x],&t,sizeof(glm::vec2));
@@ -187,7 +203,7 @@ int main(int argv, char** argc) try {
 
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_LEVEL,0);
 
-    glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,w,h,0,GL_RGB,GL_UNSIGNED_BYTE,img);
+//    glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,w,h,0,GL_RGB,GL_UNSIGNED_BYTE,img);
     free(img);
 
     //Diffusion texture
@@ -196,7 +212,7 @@ int main(int argv, char** argc) try {
 
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_LEVEL,0);
 
-    glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,c_w,c_h,0,GL_RGB,GL_UNSIGNED_BYTE,c_img);
+//    glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,c_w,c_h,0,GL_RGB,GL_UNSIGNED_BYTE,c_img);
     free(c_img);
 
     //Define uniforms
@@ -214,12 +230,33 @@ int main(int argv, char** argc) try {
     glUniform1i(glGetUniformLocation(program,"depthtex"),0);
     glUniform1i(glGetUniformLocation(program,"colortex"),1);
 
+
     glfwShowWindow(gctxt.window);
     double frametime = glfwGetTime();
+    libfreenect2::Frame *dep = 0;
+    libfreenect2::Frame *col = 0;
+	libfreenect2::FrameMap frames;
+	fprintf(stderr,"Now looping\n");
     while(!glfwWindowShouldClose(gctxt.window))
     {
         glClear(GL_COLOR_BUFFER_BIT);
-//        glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,c_w,c_h,0,GL_RGB,GL_UNSIGNED_BYTE,c_img);
+		
+		listener.waitForNewFrame(frames);
+		dep = frames[libfreenect2::Frame::Depth];
+		col = frames[libfreenect2::Frame::Color];
+		if(dep&&col){
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D,textures[0]);
+			glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,dep->width,dep->height,0,
+				GL_RGB,GL_UNSIGNED_BYTE,dep->data);
+
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D,textures[1]);
+			glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,col->width,col->height,0,
+				GL_RGB,GL_UNSIGNED_BYTE,col->data);
+		}
+		dep = 0;
+		col = 0;
 
         rot = mouse_rotation;
         cam_ready = glm::translate(cam,camera_pos) * glm::mat4_cast(mouse_rotation);
@@ -234,6 +271,7 @@ int main(int argv, char** argc) try {
 
         fprintf(stderr,"Frames: %f\n",1.0/(glfwGetTime()-frametime));
         frametime = glfwGetTime();
+		listener.release(frames);
     }
 
     glDeleteTextures(2,textures);

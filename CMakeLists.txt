@@ -20,7 +20,7 @@ set( KHeaders
 ${CMAKE_SOURCE_DIR}
 deps/flextGL
 deps/libfreenect2/include
-deps/glfw/include
+#deps/glfw/include
 deps/stb
 
 )

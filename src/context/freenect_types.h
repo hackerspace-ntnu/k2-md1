@@ -25,6 +25,12 @@ struct FreenectContext
     libfreenect2::Freenect2Device* device;
 };
 
+class FreenectListener : public libfreenect2::FrameListener
+{
+	public:
+		bool onNewFrame(libfreenect2::Frame::Type type, libfreenect2::Frame *frame);
+};
+
 }
 
 #endif
