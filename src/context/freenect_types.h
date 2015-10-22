@@ -1,6 +1,8 @@
 #ifndef FREENECT_TYPES
 #define FREENECT_TYPES
 
+#include <stdexcept>
+
 #include <stdio.h>
 
 #include <string>
@@ -13,7 +15,7 @@ typedef unsigned int uint;
 
 struct FreenectContext
 {
-    FreenectContext(uint filter);
+    FreenectContext();
     ~FreenectContext();
 
     libfreenect2::Freenect2 manager;
