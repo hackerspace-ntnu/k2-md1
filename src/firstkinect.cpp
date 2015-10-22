@@ -32,5 +32,7 @@ int main(int argv, char** argc) try {
 }
 catch(std::exception v)
 {
+    fprintf(stderr,"--------------------------\n"
+                   "Whoops! %s\n",v.what());
     return 1;
 }
