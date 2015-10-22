@@ -1,0 +1,3 @@
+[submodule "deps/libfreenect2"]
+	path = deps/libfreenect2
+	url = https://github.com/OpenKinect/libfreenect2.git
