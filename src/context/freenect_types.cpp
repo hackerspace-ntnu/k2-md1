@@ -1,6 +1,8 @@
 #include "freenect_types.h"
 
-KineBot::FreenectContext::FreenectContext() :
+namespace KineBot
+{
+FreenectContext::FreenectContext() :
     device(NULL)
 {
     int devices = manager.enumerateDevices();
@@ -10,7 +12,14 @@ KineBot::FreenectContext::FreenectContext() :
     device = manager.openDefaultDevice();
 }
 
-KineBot::FreenectContext::~FreenectContext()
+FreenectContext::~FreenectContext()
 {
     device->close();
+}
+
+bool FreenectListener::onNewFrame(libfreenect2::Frame::Type type, libfreenect2::Frame *frame)
+{
+
+}
+
 }
