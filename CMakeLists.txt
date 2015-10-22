@@ -3,13 +3,20 @@ project(K2MD1)
 
 set(KSrc
 
-src/test.cpp
+src/firstkinect.cpp
 
 )
 
-include_directories(${PROJECT_SOURCE_DIR})
+set(KHeaders
 
-add_executable(FreeBot ${KSrc})
+${CMAKE_SOURCE_DIR}
+deps/libfreenect2/include
+
+)
+
+include_directories(${KHeaders})
+
+add_executable(FreeBot ${KSrc} ${KHeaders})
 
 set(KLibs
 
