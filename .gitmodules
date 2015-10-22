@@ -1,3 +1,6 @@
 [submodule "deps/libfreenect2"]
 	path = deps/libfreenect2
 	url = https://github.com/OpenKinect/libfreenect2.git
+[submodule "deps/glfw"]
+	path = deps/glfw
+	url = https://github.com/glfw/glfw.git
