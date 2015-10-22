@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 2.8.11)
+set (CMAKE_BUILD_TYPE Debug)
 project(K2MD1)
 
 LIST(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake_modules)
@@ -8,6 +9,7 @@ set( KSrc
 deps/glad/src/glad.c
 src/firstkinect.cpp
 src/context/freenect_types.cpp
+src/graphics/glfw_types.cpp
 
 )
 
@@ -31,9 +33,17 @@ include_directories(${KHeaders})
 #Find the Freenect2 library using a CMake variable given by user
 find_library(FREENECT2_LIBRARY NAMES "freenect2" PATHS ${CMAKE_CURRENT_BINARY_DIR})
 
+find_package(GLFW3)
+find_package(OpenGL)
+
+if(NOT WIN32)
+    find_package(X11)
+    set (GLFWLibs Xrandr Xi GL m dl Xxf86vm X11 pthread Xinerama Xcursor ${X11_LIBRARIES})
+endif()
+
 message("Freenect2 at: ${FREENECT2_LIBRARY}")
 
 #Create a target
 add_executable(FreeBot ${KSrc})
 #Link the target
-target_link_libraries(FreeBot ${KLibs} ${FREENECT2_LIBRARY})
+target_link_libraries(FreeBot ${KLibs} ${FREENECT2_LIBRARY} ${GLFW3_LIBRARIES} ${GLFWLibs})

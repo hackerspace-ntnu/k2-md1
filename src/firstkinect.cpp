@@ -1,10 +1,25 @@
-#include <iostream>
-
 #include "context/freenect_types.h"
-
-using namespace libfreenect2;
+#include "graphics/glcontext.h"
+#include "graphics/glfw_types.h"
 
 int main(int argv, char** argc) try {
+    KineBot::GLFW::GLFWContext gctxt;
+    glfwShowWindow(gctxt.window);
+    glfwMakeContextCurrent(gctxt.window);
+
+    if(!gladLoadGL())
+        throw std::runtime_error("Failed to load Glad!");
+
+    glad_glClearColor(1.f,0.f,0.f,1.f);
+    while(!glfwWindowShouldClose(gctxt.window))
+    {
+        glad_glClear(GL_COLOR_BUFFER_BIT);
+        glfwPollEvents();
+        glfwSwapBuffers(gctxt.window);
+    }
+
+    glfwHideWindow(gctxt.window);
+
     KineBot::FreenectContext ctxt;
 
     //  Freenect2 freenect2;
