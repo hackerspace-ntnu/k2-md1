@@ -7,11 +7,11 @@ using namespace libfreenect2;
 using namespace std;
 
 int main() {
+  SyncMultiFrameListener listener(Frame::Depth|Frame::Color);
   Freenect2 freenect2;
   freenect2.enumerateDevices();
   string serial = freenect2.getDefaultDeviceSerialNumber();
   Freenect2Device *dev = freenect2.openDevice(serial);
-  SyncMultiFrameListener listener(Frame::Depth|Frame::Color);
   dev->setColorFrameListener(&listener);
   dev->setIrAndDepthFrameListener(&listener);
   dev->start();

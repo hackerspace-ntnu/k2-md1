@@ -58,7 +58,8 @@ Surface::Surface(const char*img) {
   int len = stringLen(img);
   if (sameString(&img[len-3], (char*)"ppm", 3)) {
     FILE*fp = fopen(img, "rb");
-    unsigned char s, cd;
+    unsigned char s;
+    int cd;
     if (!fp) {
 			std::cout << "No such file\n";
       return;
