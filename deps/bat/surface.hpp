@@ -2,22 +2,23 @@ typedef unsigned int uint;
 typedef unsigned char byte;
 
 struct Color {
-	union {
-		uint v;
-		struct {
-			byte b, g, r, a;
-		};
-	};
-	Color() {}
-	Color(byte r_, byte g_, byte b_) {
-		v = b_|(g_<<8)|(r_<<16);
-	}
-	Color(uint a) {
-		v = a;
-	}
-	operator uint&() {
-		return v;
-	}
+  union {
+    uint v;
+    struct {
+      byte b, g, r, a;
+    };
+  };
+  Color() {}
+  Color(byte r_, byte g_, byte b_) {
+    v = b_|(g_<<8)|(r_<<16);
+  }
+  Color(uint a) {
+    v = a;
+  }
+  operator uint&() {
+    return v;
+  }
+  
 };
 
 class Surface {
@@ -75,9 +76,9 @@ Surface::Surface(const char*img) {
 			std::cout << "Error: '" << img << "' is not a supported pixmap format\n";
       return;
     }
-    fscanf(fp, "%d", &w);
-    fscanf(fp, "%d", &h);
-    fscanf(fp, "%d", &cd);
+    i = fscanf(fp, "%d", &w);
+    i = fscanf(fp, "%d", &h);
+    i = fscanf(fp, "%d", &cd);
     if (cd != 255) {
 			std::cout << "Unsupported color\n";
       return;
