@@ -10,6 +10,8 @@ deps/glad/src/glad.c
 src/firstkinect.cpp
 src/context/freenect_types.cpp
 src/graphics/glfw_types.cpp
+deps/stb/stb_image.h
+deps/glm
 
 )
 
@@ -19,6 +21,7 @@ ${CMAKE_SOURCE_DIR}
 deps/glad/include
 deps/libfreenect2/include
 deps/glfw/include
+deps/stb
 
 )
 
