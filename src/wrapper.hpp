@@ -1,7 +1,7 @@
+#include <iostream>
 #include <libfreenect2/libfreenect2.hpp>
 #include <libfreenect2/frame_listener_impl.h>
 #include <libfreenect2/packet_pipeline.h>
-#include <iostream>
 
 using namespace libfreenect2;
 
@@ -27,14 +27,14 @@ struct MyKinect {
     dev->stop();
     dev->close();
   }
-  void getColorAndDepth(Color*&col, float*&depth) {
+  void getColorAndDepth(unsigned int**col, float**depth) {
     if (gotFrame)
       listener.release(frames);
 
     listener.waitForNewFrame(frames);
     gotFrame = 1;
 
-    depth = (float*)frames[Frame::Depth]->data;
-    col = (Color*)frames[Frame::Color]->data;
+    *depth = (float*)frames[Frame::Depth]->data;
+    *col = (unsigned int*)frames[Frame::Color]->data;
   }
 };

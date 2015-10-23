@@ -1,5 +1,5 @@
-#include "../deps/bat/bat.hpp"
 #include "wrapper.hpp"
+#include "../deps/bat/bat.hpp"
 
 int main() {
   int sw = 800, sh = 600;
@@ -17,11 +17,11 @@ int main() {
       if (e.type == KeyPress and e.key == K_ESCAPE) return 0;
     }
 
-    kinect.getColorAndDepth(col, depth);
+    kinect.getColorAndDepth((uint**)&col, &depth);
 
     for (int j = 0; j < depth_height; j++) 
       for (int i = 0; i < depth_width; i++)
-	sf.pixels[i+sf.w*j] = int((depth[i+depth_width*j]-500)/10);
+	sf.pixels[i+sf.w*j] = int((depth[i+depth_width*j]-500)*10);
 
     screen.putSurface(sf);
     clock.tick(30);
