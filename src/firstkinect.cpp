@@ -15,12 +15,22 @@ static glm::quat mouse_rotation;
 static glm::vec3 camera_pos;
 static float     screen_gamma;
 
+/*!
+ * \brief GLFW callback for resizing the GL viewport automatically
+ * \param w
+ * \param h
+ */
 void glfw_fb_resize(GLFWwindow*,int w,int h)
 {
-    //This resizes the GL viewport automatically on a callback
     glViewport(0,0,w,h);
 }
 
+/*!
+ * \brief GLFW callback for handling keyboard events
+ * \param win
+ * \param key
+ * \param action
+ */
 void glfw_keyboard_event(GLFWwindow* win,int key,int/*scancode*/,int action,int/*modifier*/)
 {
     if(action&GLFW_REPEAT|GLFW_PRESS)
@@ -99,10 +109,12 @@ int main(int argv, char** argc) try {
 //    listener.waitForNewFrame(frames);
 //    d = frames[libfreenect2::Frame::Depth];
 //    listener.release(frames);
+//    libfreenect2::Frame *d;
 
     glClearColor(0.0f,0.f,0.f,1.f);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    glEnable(0x8642); //GL_VERTEX_PROGRAM_POINT_SIZE
 
     //Load sample texture from file
     int w = 0,h = 0;
@@ -204,14 +216,14 @@ int main(int argv, char** argc) try {
 
     glfwShowWindow(gctxt.window);
     double frametime = glfwGetTime();
-    libfreenect2::Frame *d;
     while(!glfwWindowShouldClose(gctxt.window))
     {
         glClear(GL_COLOR_BUFFER_BIT);
 //        glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,c_w,c_h,0,GL_RGB,GL_UNSIGNED_BYTE,c_img);
 
         rot = mouse_rotation;
-        cam_ready = glm::translate(cam,camera_pos)*glm::mat4_cast(rot);
+        cam_ready = glm::translate(cam,camera_pos);
+        cam_ready *= glm::mat4_cast(mouse_rotation);
         glUniformMatrix4fv(transform_uniform,1,GL_FALSE,(GLfloat*)&cam_ready);
         glUniform1f(gamma_uniform,screen_gamma);
 
@@ -223,7 +235,6 @@ int main(int argv, char** argc) try {
 
         fprintf(stderr,"Frames: %f\n",1.0/(glfwGetTime()-frametime));
         frametime = glfwGetTime();
-
     }
 
     glDeleteTextures(2,textures);

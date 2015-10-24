@@ -10,16 +10,13 @@ FreenectContext::FreenectContext() :
         throw std::runtime_error("No devices detected! Cannot continue!");
     fprintf(stderr,"Number of Kinect 2 devices detected: %i",devices);
     device = manager.openDefaultDevice();
+    device->start();
 }
 
 FreenectContext::~FreenectContext()
 {
+    device->stop();
     device->close();
-}
-
-bool FreenectListener::onNewFrame(libfreenect2::Frame::Type type, libfreenect2::Frame *frame)
-{
-
 }
 
 }

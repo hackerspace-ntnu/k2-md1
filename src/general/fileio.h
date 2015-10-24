@@ -6,6 +6,11 @@
 
 namespace KineBot
 {
+/*!
+ * \brief Read a text file into memory
+ * \param file Path to an existing file which is to be read
+ * \return A null-terminated string with the file's text contents
+ */
 static char* read_text_file(const char* file)
 {
     FILE* fp = fopen(file,"r");

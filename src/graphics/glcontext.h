@@ -8,6 +8,12 @@ namespace KineBot
 {
 namespace GL
 {
+/*!
+ * \brief Create a GL shader program, complete with compilation and linking from shader source files.
+ * \param vshader Path to a valid vertex shader file
+ * \param fshader Path to a valid fragment shader file
+ * \return A handle for a GL shader program
+ */
 static GLuint create_program(const char* vshader, const char* fshader)
 {
     char* vsrc = KineBot::read_text_file(vshader);
@@ -17,6 +23,7 @@ static GLuint create_program(const char* vshader, const char* fshader)
     GLuint fsh = glCreateShader(GL_FRAGMENT_SHADER);
 
     {
+        //We do this to avoid ambiguity with const char**
         const char* v = vsrc;
         const char* f = fsrc;
 
@@ -39,6 +46,9 @@ static GLuint create_program(const char* vshader, const char* fshader)
 
     glDeleteShader(vsh);
     glDeleteShader(fsh);
+
+    free(vsrc);
+    free(fsrc);
 
     return program;
 }

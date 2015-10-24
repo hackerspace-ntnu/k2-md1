@@ -13,6 +13,9 @@ namespace KineBot
 {
 typedef unsigned int uint;
 
+/*!
+ * \brief A structure containing the data for a Freenect device. Requires a valid Freenect device to be present on construction (selecting the default device) and for this device to initialize correctly. On destruction, this object will close the device.
+ */
 struct FreenectContext
 {
     FreenectContext();
@@ -20,12 +23,6 @@ struct FreenectContext
 
     libfreenect2::Freenect2 manager;
     libfreenect2::Freenect2Device* device;
-};
-
-class FreenectListener : public libfreenect2::FrameListener
-{
-public:
-    bool onNewFrame(libfreenect2::Frame::Type type, libfreenect2::Frame *frame);
 };
 
 }
