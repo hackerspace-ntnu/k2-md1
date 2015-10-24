@@ -13,6 +13,7 @@
 
 static glm::quat mouse_rotation;
 static glm::vec3 camera_pos;
+static float     screen_gamma;
 
 void glfw_fb_resize(GLFWwindow*,int w,int h)
 {
@@ -62,7 +63,18 @@ void glfw_keyboard_event(GLFWwindow* win,int key,int/*scancode*/,int action,int/
             glfwSetWindowShouldClose(win,1);
             break;
         }
+
+        case GLFW_KEY_KP_ADD:{
+            screen_gamma += 0.1f;
+            break;
         }
+        case GLFW_KEY_KP_SUBTRACT:{
+            screen_gamma -= 0.1f;
+            break;
+        }
+        }
+        if(screen_gamma <= 0.f)
+            screen_gamma = 0.1f;
     }
 }
 
@@ -88,7 +100,9 @@ int main(int argv, char** argc) try {
 //    d = frames[libfreenect2::Frame::Depth];
 //    listener.release(frames);
 
-    glClearColor(0.5f,0.f,0.f,1.f);
+    glClearColor(0.0f,0.f,0.f,1.f);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 
     //Load sample texture from file
     int w = 0,h = 0;
@@ -113,8 +127,11 @@ int main(int argv, char** argc) try {
     GLuint vertexbuffers[2];
     glGenBuffers(2,vertexbuffers);
 
-    GLuint vao;
-    glGenVertexArrays(1,&vao);
+    GLuint vertexarrays[1];
+    glGenVertexArrays(1,vertexarrays);
+
+    GLuint transformfeedbacks[1];
+    glGenTransformFeedbacks(1,transformfeedbacks);
 
     //Create some data to use as vertex data
     int coord_w = 1920,coord_h = 1080;
@@ -131,9 +148,9 @@ int main(int argv, char** argc) try {
             memcpy(&texcoords[y*coord_w+x],&t,sizeof(glm::vec2));
         }
 
-    glBindVertexArray(vao);
+    glBindVertexArray(vertexarrays[0]);
 
-    //Fill vertex buffer with vertex positions, screen-space-ish
+    //Fill vertex buffers and define some vertex attributes
     glBindBuffer(GL_ARRAY_BUFFER,vertexbuffers[0]);
 
     glEnableVertexAttribArray(0);
@@ -142,7 +159,6 @@ int main(int argv, char** argc) try {
     glBufferData(GL_ARRAY_BUFFER,coord_size,coords,GL_STATIC_DRAW);
     free(coords),
 
-    //Fill vertex buffer with texture coordinates
     glBindBuffer(GL_ARRAY_BUFFER,vertexbuffers[1]);
 
     glEnableVertexAttribArray(1);
@@ -151,7 +167,7 @@ int main(int argv, char** argc) try {
     glBufferData(GL_ARRAY_BUFFER,coord_size,texcoords,GL_STATIC_DRAW);
     free(texcoords);
 
-    //TODO: Add uniform buffer for matrices
+    //TODO: Add uniform buffer for matrices, we might need it
 
     //Bind and load sample texture
     glActiveTexture(GL_TEXTURE0);
@@ -180,6 +196,7 @@ int main(int argv, char** argc) try {
     glm::mat4 cam_ready = glm::translate(cam,pos)*glm::mat4_cast(rot);
 
     GLuint transform_uniform = glGetUniformLocation(program,"transform");
+    GLuint gamma_uniform = glGetUniformLocation(program,"gamma");
 
     glUniformMatrix4fv(transform_uniform,1,GL_FALSE,(GLfloat*)&cam);
     glUniform1i(glGetUniformLocation(program,"depthtex"),0);
@@ -196,6 +213,7 @@ int main(int argv, char** argc) try {
         rot = mouse_rotation;
         cam_ready = glm::translate(cam,camera_pos)*glm::mat4_cast(rot);
         glUniformMatrix4fv(transform_uniform,1,GL_FALSE,(GLfloat*)&cam_ready);
+        glUniform1f(gamma_uniform,screen_gamma);
 
         glDrawArrays(GL_POINTS,0,1920*1080);
 
@@ -209,6 +227,9 @@ int main(int argv, char** argc) try {
     }
 
     glDeleteTextures(2,textures);
+    glDeleteBuffers(2,vertexbuffers);
+    glDeleteProgram(program);
+    glDeleteVertexArrays(1,vertexarrays);
     return 0;
 }
 catch(std::exception v)

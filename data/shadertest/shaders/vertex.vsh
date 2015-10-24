@@ -11,10 +11,11 @@ out float depthval;
 out vec2 tex;
 
 void main(){
-	float depth = texture(depthtex,texcoord);
+	float depth = texture(depthtex,texcoord).x;
 	depth = 1.0-depth;
 	
 	depthval = depth;
 	tex = texcoord;
 	gl_Position = transform*vec4(vec3(coord,depth*5.0),1);
+	gl_PointSize = 10.0;
 }
