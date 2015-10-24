@@ -6,7 +6,7 @@ LIST(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake_modules)
 
 set( KSrc
 #Add compilation units here
-deps/glad/src/glad.c
+deps/flextGL/flextGL.c
 src/firstkinect.cpp
 src/context/freenect_types.cpp
 src/graphics/glfw_types.cpp
@@ -18,7 +18,7 @@ deps/glm
 set( KHeaders
 #Add paths to headers here
 ${CMAKE_SOURCE_DIR}
-deps/glad/include
+deps/flextGL
 deps/libfreenect2/include
 deps/glfw/include
 deps/stb
