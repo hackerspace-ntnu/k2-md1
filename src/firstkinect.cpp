@@ -20,13 +20,6 @@ void glfw_fb_resize(GLFWwindow*,int w,int h)
     glViewport(0,0,w,h);
 }
 
-void glfw_mouse_move(GLFWwindow*,double x,double y)
-{
-    mouse_rotation.w = 2;
-    mouse_rotation.y = x*0.01;
-    mouse_rotation.x = y*0.01;
-}
-
 void glfw_keyboard_event(GLFWwindow* win,int key,int/*scancode*/,int action,int/*modifier*/)
 {
     if(action&GLFW_REPEAT|GLFW_PRESS)
@@ -76,14 +69,11 @@ void glfw_keyboard_event(GLFWwindow* win,int key,int/*scancode*/,int action,int/
 int main(int argv, char** argc) try {
     KineBot::GLFW::GLFWContext gctxt(1280,720,"KinectBot");
     glfwSwapInterval(0);
-//    glfwSetInputMode(gctxt.window,GLFW_CURSOR,GLFW_CURSOR_DISABLED);
     glfwSetFramebufferSizeCallback(gctxt.window,glfw_fb_resize);
-//    glfwSetCursorPosCallback(gctxt.window,glfw_mouse_move);
     glfwSetKeyCallback(gctxt.window,glfw_keyboard_event);
 
     if(!flextInit(gctxt.window))
         throw std::runtime_error("Failed to load Glad!");
-
 
 //    KineBot::FreenectContext ctxt;
 
@@ -98,20 +88,27 @@ int main(int argv, char** argc) try {
 //    d = frames[libfreenect2::Frame::Depth];
 //    listener.release(frames);
 
-    glClearColor(0.0f,0.f,0.f,1.f);
+    glClearColor(0.5f,0.f,0.f,1.f);
 
     //Load sample texture from file
-    int w,h,dep;
+    int w = 0,h = 0;
     FILE* depthtext = fopen("depthtexture.jpg","r");
-    unsigned char* img = stbi_load_from_file(depthtext,&w,&h,&dep,3);
+    unsigned char* img = stbi_load_from_file(depthtext,&w,&h,NULL,3);
+    fclose(depthtext);
 
+    int c_w = 0,c_h = 0;
+    FILE* coltext = fopen("colortexture.jpg","r");
+    unsigned char* c_img = stbi_load_from_file(coltext,&c_w,&c_h,NULL,3);
+    fclose(coltext);
+
+    //Create a shader program
     GLuint program = KineBot::GL::create_program("shaders/vertex.vsh","shaders/fragment.fsh");
 
     glUseProgram(program);
 
     //Create resources
-    GLuint texture;
-    glGenTextures(1,&texture);
+    GLuint textures[2];
+    glGenTextures(2,textures);
 
     GLuint vertexbuffers[2];
     glGenBuffers(2,vertexbuffers);
@@ -143,6 +140,7 @@ int main(int argv, char** argc) try {
     glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,sizeof(glm::vec2),(void*)0);
 
     glBufferData(GL_ARRAY_BUFFER,coord_size,coords,GL_STATIC_DRAW);
+    free(coords),
 
     //Fill vertex buffer with texture coordinates
     glBindBuffer(GL_ARRAY_BUFFER,vertexbuffers[1]);
@@ -151,15 +149,27 @@ int main(int argv, char** argc) try {
     glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,sizeof(glm::vec2),(void*)0);
 
     glBufferData(GL_ARRAY_BUFFER,coord_size,texcoords,GL_STATIC_DRAW);
+    free(texcoords);
 
     //TODO: Add uniform buffer for matrices
 
     //Bind and load sample texture
-    glBindTexture(GL_TEXTURE_2D,texture);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D,textures[0]);
 
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_LEVEL,0);
 
     glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,w,h,0,GL_RGB,GL_UNSIGNED_BYTE,img);
+    free(img);
+
+    //Diffusion texture
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D,textures[1]);
+
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_LEVEL,0);
+
+    glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,c_w,c_h,0,GL_RGB,GL_UNSIGNED_BYTE,c_img);
+    free(c_img);
 
     //Define uniforms
     glm::vec3 pos(-20,-15,-15);
@@ -173,6 +183,7 @@ int main(int argv, char** argc) try {
 
     glUniformMatrix4fv(transform_uniform,1,GL_FALSE,(GLfloat*)&cam);
     glUniform1i(glGetUniformLocation(program,"depthtex"),0);
+    glUniform1i(glGetUniformLocation(program,"colortex"),1);
 
     glfwShowWindow(gctxt.window);
     double frametime = glfwGetTime();
@@ -180,7 +191,7 @@ int main(int argv, char** argc) try {
     while(!glfwWindowShouldClose(gctxt.window))
     {
         glClear(GL_COLOR_BUFFER_BIT);
-//        glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,w,h,0,GL_RGB,GL_UNSIGNED_BYTE,img);
+//        glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,c_w,c_h,0,GL_RGB,GL_UNSIGNED_BYTE,c_img);
 
         rot = mouse_rotation;
         cam_ready = glm::translate(cam,camera_pos)*glm::mat4_cast(rot);
@@ -192,12 +203,12 @@ int main(int argv, char** argc) try {
         glfwPollEvents();
         glfwSwapBuffers(gctxt.window);
 
-//        fprintf(stderr,"Frames: %f\n",1.0/(glfwGetTime()-frametime));
+        fprintf(stderr,"Frames: %f\n",1.0/(glfwGetTime()-frametime));
         frametime = glfwGetTime();
 
     }
 
-    glDeleteTextures(1,&texture);
+    glDeleteTextures(2,textures);
     return 0;
 }
 catch(std::exception v)

@@ -12,8 +12,9 @@ out vec2 tex;
 
 void main(){
 	float depth = texture(depthtex,texcoord);
+	depth = 1.0-depth;
 	
-	depthval = 1.0-depth;
+	depthval = depth;
 	tex = texcoord;
 	gl_Position = transform*vec4(vec3(coord,depth*5.0),1);
 }

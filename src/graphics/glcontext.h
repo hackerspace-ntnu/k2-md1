@@ -43,7 +43,6 @@ static GLuint create_program(const char* vshader, const char* fshader)
     return program;
 }
 
-
 }
 }
 
