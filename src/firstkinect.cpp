@@ -12,7 +12,6 @@
 #include <libfreenect2/frame_listener_impl.h>
 #include <libfreenect2/packet_pipeline.h>
 #include <libfreenect2/registration.h>
-#include <libfreenect2/logger.h>
 
 #include "deps/glm/glm/glm.hpp"
 #include "deps/glm/glm/gtc/type_ptr.hpp"
@@ -20,7 +19,10 @@
 
 static glm::quat mouse_rotation;
 static glm::vec3 camera_pos;
-static float     screen_gamma;
+static float     screen_gamma = 1.0;
+static float     screen_scale = 1.0;
+static float     screen_amp = 5.0;
+static bool      kinect_active;
 
 /*!
  * \brief GLFW callback for resizing the GL viewport automatically
@@ -89,43 +91,49 @@ void glfw_keyboard_event(GLFWwindow* win,int key,int/*scancode*/,int action,int/
             screen_gamma -= 0.1f;
             break;
         }
+        case GLFW_KEY_O:{
+            screen_scale -= 0.05f;
+            break;
+        }
+        case GLFW_KEY_P:{
+            screen_scale += 0.05f;
+            break;
+        }
+        case GLFW_KEY_U:{
+            screen_amp -= 0.1f;
+            break;
+        }
+        case GLFW_KEY_I:{
+            screen_amp += 0.1f;
+            break;
+        }
         }
         if(screen_gamma <= 0.f)
             screen_gamma = 0.1f;
     }
 }
 
-int main(int argv, char** argc) try {
+int main(int,char**) try {
+    kinect_active = true;
+
+    //Create a GLFW context
     KineBot::GLFW::GLFWContext gctxt(1280,720,"KinectBot");
     glfwSwapInterval(0);
     glfwSetFramebufferSizeCallback(gctxt.window,glfw_fb_resize);
     glfwSetKeyCallback(gctxt.window,glfw_keyboard_event);
 
-	libfreenect2::setGlobalLogger(libfreenect2::createConsoleLogger(libfreenect2::Logger::Debug));
-    libfreenect2::Freenect2 manager;
-	fprintf(stderr,"Devices connected: %i\n",manager.enumerateDevices());
-	libfreenect2::PacketPipeline *pipeline = 0;
-	libfreenect2::Freenect2Device* device = 0;
-	pipeline = new libfreenect2::CpuPacketPipeline();
-	libfreenect2::SyncMultiFrameListener listener(libfreenect2::Frame::Color 
-		| libfreenect2::Frame::Depth);
-	fprintf(stderr,"Enumerating devices\n");
-
-	std::string serial = manager.getDefaultDeviceSerialNumber();
-	printf("Serial: %s\n",serial.c_str());
-    device = manager.openDevice(serial);
-	device->setColorFrameListener(&listener);
-	device->setIrAndDepthFrameListener(&listener);
-    device->start();
-
-  	std::cout << "device serial: " << device->getSerialNumber() << std::endl;
-  	std::cout << "device firmware: " << device->getFirmwareVersion() << std::endl;
-
+    //Create a Kinect context
+    KineBot::FreenectContext *kctxt;
+    try{
+        kctxt = new KineBot::FreenectContext;
+    }catch(std::runtime_error){
+        kinect_active = false;
+    }
 
     if(!flextInit(gctxt.window))
         throw std::runtime_error("Failed to load Glad!");
 
-	fprintf(stderr,"Hello\n");
+    fprintf(stderr,"Hello\n");
 
     glClearColor(0.0f,0.f,0.f,1.f);
     glEnable(GL_BLEND);
@@ -220,12 +228,14 @@ int main(int argv, char** argc) try {
     glm::quat rot(2,0,0,0);
 
 //    glm::mat4 cam = glm::perspective(60.f,8.f/5.f,0.1f,100.f);
-	glm::mat4 cam = glm::ortho(0.f,30.f,20.f,0.f,0.f,100.f);
+    glm::mat4 cam = glm::ortho(0.f,30.f,20.f,0.f,0.f,100.f);
     cam = glm::scale(cam,glm::vec3(1,1,1));
     glm::mat4 cam_ready;
 
     GLuint transform_uniform = glGetUniformLocation(program,"transform");
     GLuint gamma_uniform = glGetUniformLocation(program,"gamma");
+    GLuint scale_uniform = glGetUniformLocation(program,"scaling");
+    GLuint amp_uniform = glGetUniformLocation(program,"amplitude");
 
     glUniformMatrix4fv(transform_uniform,1,GL_FALSE,(GLfloat*)&cam);
     glUniform1i(glGetUniformLocation(program,"depthtex"),0);
@@ -236,33 +246,39 @@ int main(int argv, char** argc) try {
     double frametime = glfwGetTime();
     libfreenect2::Frame *dep = 0;
     libfreenect2::Frame *col = 0;
-	libfreenect2::FrameMap frames;
-	fprintf(stderr,"Now looping\n");
+    libfreenect2::FrameMap frames;
+    fprintf(stderr,"Now looping\n");
     while(!glfwWindowShouldClose(gctxt.window))
     {
         glClear(GL_COLOR_BUFFER_BIT);
-		
-		listener.waitForNewFrame(frames);
-		dep = frames[libfreenect2::Frame::Depth];
-		col = frames[libfreenect2::Frame::Color];
-		if(dep&&col){
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D,textures[0]);
-			glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,dep->width,dep->height,0,
-				GL_RGBA,GL_UNSIGNED_BYTE,dep->data);
 
-			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D,textures[1]);
-			glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,col->width,col->height,0,
-				GL_RGBA,GL_UNSIGNED_BYTE,col->data);
-		}
-		dep = 0;
-		col = 0;
+        if(kinect_active)
+        {
+            kctxt->listener->waitForNewFrame(frames);
+            dep = frames[libfreenect2::Frame::Depth];
+            col = frames[libfreenect2::Frame::Color];
+            if(dep&&col){
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D,textures[0]);
+                glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,dep->width,dep->height,0,
+                             GL_RGBA,GL_UNSIGNED_BYTE,dep->data);
+
+                glActiveTexture(GL_TEXTURE1);
+                glBindTexture(GL_TEXTURE_2D,textures[1]);
+                glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,col->width,col->height,0,
+                             GL_RGBA,GL_UNSIGNED_BYTE,col->data);
+            }
+            dep = 0;
+            col = 0;
+            kctxt->listener->release(frames);
+        }
 
         rot = mouse_rotation;
         cam_ready = glm::translate(cam,camera_pos) * glm::mat4_cast(mouse_rotation);
         glUniformMatrix4fv(transform_uniform,1,GL_FALSE,(GLfloat*)&cam_ready);
         glUniform1f(gamma_uniform,screen_gamma);
+        glUniform1f(scale_uniform,screen_scale);
+        glUniform1f(amp_uniform,screen_amp);
 
         glDrawArrays(GL_POINTS,0,1920*1080);
 
@@ -272,13 +288,15 @@ int main(int argv, char** argc) try {
 
         fprintf(stderr,"Frames: %f\n",1.0/(glfwGetTime()-frametime));
         frametime = glfwGetTime();
-		listener.release(frames);
     }
 
     glDeleteTextures(2,textures);
     glDeleteBuffers(2,vertexbuffers);
     glDeleteProgram(program);
     glDeleteVertexArrays(1,vertexarrays);
+
+    delete kctxt;
+
     return 0;
 }
 catch(std::exception v)

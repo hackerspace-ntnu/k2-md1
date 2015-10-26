@@ -23,12 +23,14 @@ struct FreenectContext
 
     libfreenect2::Freenect2 manager;
     libfreenect2::Freenect2Device* device;
+
+    libfreenect2::SyncMultiFrameListener* listener;
 };
 
 class FreenectListener : public libfreenect2::FrameListener
 {
-	public:
-		bool onNewFrame(libfreenect2::Frame::Type type, libfreenect2::Frame *frame);
+    public:
+        bool onNewFrame(libfreenect2::Frame::Type type, libfreenect2::Frame *frame);
 };
 
 }
