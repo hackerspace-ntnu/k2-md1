@@ -170,7 +170,7 @@ int main(int argv, char** argc) try {
     for(int y=0;y<coord_h;y++)
         for(int x=0;x<coord_w;x++)
         {
-            glm::vec2 v(x/50.0-coord_w/100.0,y/50.0-coord_h/100.0);
+            glm::vec2 v(x/50.0,y/50.0);
             glm::vec2 t((float)x/(float)coord_w,(float)y/(float)coord_h);
             memcpy(&coords[y*coord_w+x],&v,sizeof(glm::vec2));
             memcpy(&texcoords[y*coord_w+x],&t,sizeof(glm::vec2));
@@ -216,12 +216,13 @@ int main(int argv, char** argc) try {
     free(c_img);
 
     //Define uniforms
-    glm::vec3 pos(-20,-15,-15);
+    glm::vec3 pos(0,0,0);
     glm::quat rot(2,0,0,0);
 
-    glm::mat4 cam = glm::perspective(60.f,8.f/5.f,0.1f,100.f);
+//    glm::mat4 cam = glm::perspective(60.f,8.f/5.f,0.1f,100.f);
+	glm::mat4 cam = glm::ortho(0.f,30.f,20.f,0.f,0.f,100.f);
     cam = glm::scale(cam,glm::vec3(1,1,1));
-    glm::mat4 cam_ready = glm::translate(cam,pos)*glm::mat4_cast(rot);
+    glm::mat4 cam_ready;
 
     GLuint transform_uniform = glGetUniformLocation(program,"transform");
     GLuint gamma_uniform = glGetUniformLocation(program,"gamma");

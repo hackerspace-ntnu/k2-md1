@@ -11,5 +11,7 @@ out vec4 OutColor;
 
 void main ()
 {
-	OutColor = vec4(texture(colortex,tex).xyz/gamma,1.0);
+	float correction = length(vec2(0.5)-tex);
+	vec2 translated = tex * correction;
+	OutColor = vec4(texture(colortex,translated).zyx/gamma,1.0);
 }
