@@ -203,7 +203,7 @@ int main(int argv, char** argc) try {
 
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_LEVEL,0);
 
-//    glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,w,h,0,GL_RGB,GL_UNSIGNED_BYTE,img);
+    glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,w,h,0,GL_RGB,GL_UNSIGNED_BYTE,img);
     free(img);
 
     //Diffusion texture
@@ -212,7 +212,7 @@ int main(int argv, char** argc) try {
 
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_LEVEL,0);
 
-//    glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,c_w,c_h,0,GL_RGB,GL_UNSIGNED_BYTE,c_img);
+    glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,c_w,c_h,0,GL_RGB,GL_UNSIGNED_BYTE,c_img);
     free(c_img);
 
     //Define uniforms
@@ -247,13 +247,13 @@ int main(int argv, char** argc) try {
 		if(dep&&col){
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D,textures[0]);
-			glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,dep->width,dep->height,0,
-				GL_RGB,GL_UNSIGNED_BYTE,dep->data);
+			glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,dep->width,dep->height,0,
+				GL_RGBA,GL_UNSIGNED_BYTE,dep->data);
 
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D,textures[1]);
-			glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,col->width,col->height,0,
-				GL_RGB,GL_UNSIGNED_BYTE,col->data);
+			glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,col->width,col->height,0,
+				GL_RGBA,GL_UNSIGNED_BYTE,col->data);
 		}
 		dep = 0;
 		col = 0;
