@@ -17,5 +17,5 @@ void main(){
 	depthval = depth;
 	tex = texcoord;
 	gl_Position = transform*vec4(vec3(coord,depth*5.0),1);
-	gl_PointSize = 10.0;
+	gl_PointSize = 1.0;
 }

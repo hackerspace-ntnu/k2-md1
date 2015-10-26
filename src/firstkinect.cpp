@@ -222,8 +222,7 @@ int main(int argv, char** argc) try {
 //        glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,c_w,c_h,0,GL_RGB,GL_UNSIGNED_BYTE,c_img);
 
         rot = mouse_rotation;
-        cam_ready = glm::translate(cam,camera_pos);
-        cam_ready *= glm::mat4_cast(mouse_rotation);
+        cam_ready = glm::translate(cam,camera_pos) * glm::mat4_cast(mouse_rotation);
         glUniformMatrix4fv(transform_uniform,1,GL_FALSE,(GLfloat*)&cam_ready);
         glUniform1f(gamma_uniform,screen_gamma);
 
