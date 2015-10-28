@@ -170,7 +170,7 @@ int main(int,char**) try {
     glGenTransformFeedbacks(1,transformfeedbacks);
 
     //Create some data to use as vertex data
-    int coord_w = 1920,coord_h = 1080;
+    int coord_w = 1280,coord_h = 720;
     size_t coord_size = coord_w*coord_h*sizeof(glm::vec2);
     glm::vec2* coords = (glm::vec2*)malloc(coord_size);
     glm::vec2* texcoords = (glm::vec2*)malloc(coord_size);
@@ -219,6 +219,8 @@ int main(int,char**) try {
     glBindTexture(GL_TEXTURE_2D,textures[1]);
 
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_LEVEL,0);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
 
     glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,c_w,c_h,0,GL_RGB,GL_UNSIGNED_BYTE,c_img);
     free(c_img);
@@ -258,10 +260,13 @@ int main(int,char**) try {
             dep = frames[libfreenect2::Frame::Depth];
             col = frames[libfreenect2::Frame::Color];
             if(dep&&col){
+		float* depth_dat = (float*)dep->data;
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D,textures[0]);
-                glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,dep->width,dep->height,0,
-                             GL_RGBA,GL_UNSIGNED_BYTE,dep->data);
+		for(int i=0;i<dep->width*dep->height;i++)
+			depth_dat[i] = depth_dat[i]/4000.0;
+                glTexImage2D(GL_TEXTURE_2D,0,GL_RED,dep->width,dep->height,0,
+                             GL_RED,GL_FLOAT,dep->data);
 
                 glActiveTexture(GL_TEXTURE1);
                 glBindTexture(GL_TEXTURE_2D,textures[1]);
@@ -280,7 +285,7 @@ int main(int,char**) try {
         glUniform1f(scale_uniform,screen_scale);
         glUniform1f(amp_uniform,screen_amp);
 
-        glDrawArrays(GL_POINTS,0,1920*1080);
+        glDrawArrays(GL_POINTS,0,coord_w*coord_h);
 
         //Event handling goes below here
         glfwPollEvents();
