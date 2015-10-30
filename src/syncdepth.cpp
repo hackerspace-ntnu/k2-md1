@@ -40,26 +40,26 @@ int main() {
 
     kinect.getColorAndDepth((uint**)&col, &depth);
 
-    reg.apply(kinect.frames[Frame::Color], kinect.frames[Frame::Depth], &undistorted, &registered);
-    col = (Color*)registered.data;
+    //reg.apply(kinect.frames[Frame::Color], kinect.frames[Frame::Depth], &undistorted, &registered);
+    //col = (Color*)registered.data;
 
     for (int j = 0; j < depth_height; j++) {
       for (int i = 0; i < depth_width; i++) {
-	if (col[i+j*depth_width])
+	/*if (col[i+j*depth_width])
 	  sf.pixels[i+sf.w*j] = col[i+j*depth_width];
-	//else 
-	//  sf.pixels[i+sf.w*j] = 0;
-	continue;
+	else 
+	  sf.pixels[i+sf.w*j] = 0;
+	continue;*/
 	float d = depth[i+depth_width*j];
 	if (!d) continue;
 
-	/*float x = i-dcx, y = j-dcy;
-	//x += 55*depth_pers/d; //55mm -ish between cameras
+	float x = i-dcx, y = j-dcy;
+	x += 55*depth_pers/d; //55mm -ish between cameras
 	int ix = x*color_pers/depth_pers+ccx;
-	int iy = y*color_pers/depth_pers+ccy;*/
-	float cx, cy;
-	reg.apply(i, j, d, cx, cy);
-	int ix = cx, iy = cy;
+	int iy = y*color_pers/depth_pers+ccy;
+	//float cx, cy;
+	//reg.apply(i, j, d, cx, cy);
+	//int ix = cx, iy = cy;
 	
 	if (ix >= 0 and iy >= 0 and ix < color_width and iy < color_height)
 	  sf.pixels[i+sw*j] = col[ix+iy*color_width];
