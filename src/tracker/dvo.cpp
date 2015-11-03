@@ -119,21 +119,9 @@ float bilin(T*img, float&x, float&y, int&w) {
 static const int Iw_ = 1920, Ih_ = 1080;
 float Ifx_ = 1081, Icx_ = Iw_*.5-.5, Icy_ = Ih_*.5-.5;
 
-void findRotation(char*I1_, float*Z1_, char*I2_, float rotmat[12]) {
+void findRotation(byte*I1_, float*Z1_, byte*I2_, float rotmat[12]) {
 	for (int i = 0; i < 12; i++)
 		rotmat[i] = i%5 == 0; //Set rotmat to idenitity matrix
-
-	float rotmat2[] = {
-		0.999081, -0.0109738, -0.0414401, -55.959, 
-		0.0109376, 0.99994, -0.00110207, -13.706, 
-		0.0414497, 0.000647841, 0.99914, -43.4292
-	};
-
-	//for (int i = 0; i < 12; i++)
-	//	rotmat[i] = rotmat2[i];
-	//float x[] = {0, -20, 0, 0, -0.075, 0};
-	//float x[] = {-68, -15, 10, 0, -0.001, 0};
-	//updaterotmatAfter(rotmat, x);
 
 	float steplen = 1;
 	float isteplen = 1./steplen;
@@ -141,8 +129,8 @@ void findRotation(char*I1_, float*Z1_, char*I2_, float rotmat[12]) {
 	int wh = Iw_*Ih_;
 	float*dI2 = new float[wh*2];
 	float*Z1 = new float[wh];
-	char*I1 = new char[wh];
-	char*I2 = new char[wh];
+	byte*I1 = new byte[wh];
+	byte*I2 = new byte[wh];
 
 	float*J = new float[wh*6];
 	float*J0 = new float[wh*6];
@@ -151,7 +139,7 @@ void findRotation(char*I1_, float*Z1_, char*I2_, float rotmat[12]) {
 	float*plotimg = new float[wh];
 
 	float lastivar = 1e-2;
-	for (int scale = 6; scale >= 3; scale--) { //Iterate from coarse to fine
+	for (int scale = 6; scale >= 0; scale--) { //Iterate from coarse to fine
 		int Iw = Iw_>>scale, Ih = Ih_>>scale;
 		float s = 1./(1<<scale);
 		float Ifx = Ifx_*s, iIfx = 1.f/Ifx;
@@ -246,7 +234,7 @@ void findRotation(char*I1_, float*Z1_, char*I2_, float rotmat[12]) {
 						//Calculate jacobian of I2
 						float*Ji = J+6*(i+j*Iw);
 
-						/*float izz = iz*iz;
+						float izz = iz*iz;
 						float dI2x = bilin<float>(dI2, px2, py2, Iw);
 						float dI2y = bilin<float>(dI2+Iw*Ih, px2, py2, Iw);
 
@@ -255,10 +243,10 @@ void findRotation(char*I1_, float*Z1_, char*I2_, float rotmat[12]) {
 						Ji[2] =-(dI2x*x+dI2y*y)*izz;
 						Ji[3] = -dI2x*x*y*izz-dI2y*(1+y*y*izz);
 						Ji[4] = dI2x*(1+x*x*izz)+dI2y*x*y*izz;
-						Ji[5] = (-dI2x*y+dI2y*x)*iz;*/
+						Ji[5] = (-dI2x*y+dI2y*x)*iz;
 
-						for (int k = 0; k < 6; k++)
-							Ji[k] = bilin(J0+k*wh, px2, py2, Iw);
+						//for (int k = 0; k < 6; k++)
+						//	Ji[k] = bilin(J0+k*wh, px2, py2, Iw);
 
 						defined_count++;
 						R[i+j*Iw] = bilin(I2, px2, py2, Iw)-I1[i+j*Iw];
@@ -285,7 +273,8 @@ void findRotation(char*I1_, float*Z1_, char*I2_, float rotmat[12]) {
 				lastivar = ivar;
 			}
 			lastivar = ivar;
-			//cout << ivar << endl;
+
+			cout << 1./ivar << endl;
 
 			for (int i = 0; i < Iw*Ih; i++) {
 				if (R[i] == 12345) {
@@ -297,7 +286,7 @@ void findRotation(char*I1_, float*Z1_, char*I2_, float rotmat[12]) {
 				float RW = R[i]*W;
 				float RRW = RW*R[i];
 				float*Ji = J+i*6;
-				plotimg[i] = RRW*s*10-255;//abs(R[i])*2-255;
+				plotimg[i] = abs(R[i])*2-255;//RRW*s*10-255;
 				//Add jacobian to LHS matrix
 				for (int l = 0; l < 6; l++) {
 					float JiW = Ji[l]*W;
@@ -315,16 +304,18 @@ void findRotation(char*I1_, float*Z1_, char*I2_, float rotmat[12]) {
 				for (int k = 0; k < l; k++) 
 					A[k*6+l] = A[l*6+k];
 
-			//plot(plotimg, Iw, Ih);
+			for (int i = 0; i < wh; i++)
+				plotimg[i] = J[i*6+5]*.2;
+			plot(plotimg, Iw, Ih);
 
 			error /= errorc;
-			cout << error << endl;
+			cout << error << endl << endl;
 			if (error >= lasterror*.99) {
 				//cout << "Reset" << endl;
 				//for (int i = 0; i < 6; i++) cout << lastx[i] << ' ';
 				//cout << endl;
 
-				updaterotmatBefore(rotmat, lastx);
+				updaterotmatAfter(rotmat, lastx);
 				break;
 			}
 			lasterror = error;
@@ -336,10 +327,11 @@ void findRotation(char*I1_, float*Z1_, char*I2_, float rotmat[12]) {
 				if (x[i] != x[i]) goto next;
 			}
 			for (int i = 0; i < 6; i++) lastx[i] = -x[i];
-			//for (int i = 0; i < 6; i++) cout << x[i] << ' ';
-			//cout << endl;
 
-			updaterotmatBefore(rotmat, x);
+			for (int i = 0; i < 6; i++) cout << x[i] << ' ';
+			cout << endl;
+
+			updaterotmatAfter(rotmat, x);
 			/*for (int j = 0; j < 3; j++) {
 				for (int i = 0; i < 4; i++) cout << rotmat[i+j*4] << ' ';
 				cout << endl;

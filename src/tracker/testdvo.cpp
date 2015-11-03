@@ -1,12 +1,12 @@
 #include "../../deps/bat/bat.hpp"
 
-void plot(char*, int, int);
+void plot(byte*, int, int);
 void plot(float*, int, int);
 #include "dvo.cpp"
 
 int sw = 1920, sh = 1080;
 
-void openimg(const char*name, char*img) {
+void openimg(const char*name, byte*img) {
 	FILE*fp = fopen(name, "r");
 	int t1, t2;
 	fscanf(fp, "%s %d %d", img, &t1, &t2);
@@ -52,7 +52,7 @@ void plot(float*img, int w, int h) {
 	loop();	
 }
 
-void plot(char*img, int w, int h) {
+void plot(byte*img, int w, int h) {
 	for (int j = 0; j < Sh; j++) 
 		for (int i = 0; i < Sw; i++) {
 			float x = (i+.5)*1.f*w/Sw-.5, y = (j+.5)*1.f*h/Sh-.5;
@@ -62,8 +62,8 @@ void plot(char*img, int w, int h) {
 }
 
 int main() {
-	char*I1 = new char[sw*sh];
-	char*I2 = new char[sw*sh];
+	byte*I1 = new byte[sw*sh];
+	byte*I2 = new byte[sw*sh];
 	float*Z1 = new float[sw*sh];
 	openimg("dump1.ppm", I1);
 	openimg("dump2.ppm", I2);
