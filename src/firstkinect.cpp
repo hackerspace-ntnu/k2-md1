@@ -24,6 +24,13 @@ static float     screen_scale = 1.0;
 static float     screen_amp = 5.0;
 static bool      kinect_active;
 
+void file_dump(const char* filename, const void* data_ptr, size_t data_size)
+{
+    FILE* outfile = fopen(filename,"wb");
+    fwrite(data_ptr, sizeof(char), data_size, outfile);
+    fclose(outfile);
+}
+
 /*!
  * \brief GLFW callback for resizing the GL viewport automatically
  * \param w
@@ -243,6 +250,7 @@ int main(int,char**) try {
     glUniform1i(glGetUniformLocation(program,"depthtex"),0);
     glUniform1i(glGetUniformLocation(program,"colortex"),1);
 
+    fprintf(stderr,"Pre-setup\n");
 
     glfwShowWindow(gctxt.window);
     double frametime = glfwGetTime();
@@ -273,6 +281,10 @@ int main(int,char**) try {
                 glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,col->width,col->height,0,
                              GL_RGBA,GL_UNSIGNED_BYTE,col->data);
             }
+            
+            file_dump("dframe.raw",dep->data,dep->width*dep->height*sizeof(float));
+            file_dump("cframe.raw",col->data,col->width*col->height*sizeof(unsigned int));
+            
             dep = 0;
             col = 0;
             kctxt->listener->release(frames);
@@ -293,6 +305,7 @@ int main(int,char**) try {
 
         fprintf(stderr,"Frames: %f\n",1.0/(glfwGetTime()-frametime));
         frametime = glfwGetTime();
+        
     }
 
     glDeleteTextures(2,textures);
