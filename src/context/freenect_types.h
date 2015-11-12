@@ -1,45 +1,26 @@
 #ifndef FREENECT_TYPES
 #define FREENECT_TYPES
 
-#include <stdexcept>
-#include <atomic>
-
-#include <stdio.h>
-
-#include <string>
-#include <mutex>
 #include <libfreenect2/libfreenect2.hpp>
-#include <libfreenect2/frame_listener_impl.h>
 
 namespace KineBot
 {
 typedef unsigned int uint;
 
+typedef void(*FreenectFrameProcessFunction)(libfreenect2::Frame**,size_t);
+
 /*!
  * \brief A structure containing the data for a Freenect device. Requires a valid Freenect device to be present on construction (selecting the default device) and for this device to initialize correctly. On destruction, this object will close the device.
  */
-struct FreenectContext
-{
-    FreenectContext();
-    ~FreenectContext();
+struct FreenectContext;
 
-    libfreenect2::Freenect2 manager;
-    libfreenect2::Freenect2Device* device;
+extern FreenectContext* freenect_alloc();
 
-    libfreenect2::SyncMultiFrameListener* listener;
+extern void freenect_launch_async(FreenectContext* kctxt);
 
-    std::mutex frame_mutex;
+extern void freenect_process_frame(FreenectContext* context, FreenectFrameProcessFunction fun, int numFrames);
 
-    libfreenect2::Frame** kframes;
-
-    std::atomic_bool new_frame;
-};
-
-class FreenectListener : public libfreenect2::FrameListener
-{
-    public:
-        bool onNewFrame(libfreenect2::Frame::Type type, libfreenect2::Frame *frame);
-};
+extern void freenect_exit_async(FreenectContext* kctxt);
 
 }
 

@@ -2,9 +2,6 @@
 #include "graphics/glfw_types.h"
 #include "context/freenect_types.h"
 
-#include <future>
-#include <thread>
-
 #include <malloc.h>
 #include <string.h>
 #include <libfreenect2/libfreenect2.hpp>
@@ -21,14 +18,40 @@ static glm::vec3 camera_pos;
 static float     screen_gamma = 1.0;
 static float     screen_scale = 1.0;
 static float     screen_amp = 5.0;
-static std::atomic_bool kinect_active;
+static bool      kinect_active;
 static bool      filedump;
+
+KineBot::GL::KineTexture* dtext;
+KineBot::GL::KineTexture* ctext;
 
 void file_dump(const char* filename, const void* data_ptr, size_t data_size)
 {
     FILE* outfile = fopen(filename,"wb");
     fwrite(data_ptr, sizeof(char), data_size, outfile);
     fclose(outfile);
+}
+
+void kinect_process_frame(libfreenect2::Frame** frames,size_t)
+{
+    libfreenect2::Frame* dep = frames[0];
+    libfreenect2::Frame* col = frames[1];
+
+    float* depth_dat = (float*)dep->data;
+    KineBot::GL::bind_texture(dtext,0);
+    for(int i=0;i<dep->width*dep->height;i++)
+        depth_dat[i] = depth_dat[i]/4000.0;
+    glTexImage2D(GL_TEXTURE_2D,0,GL_RED,dep->width,dep->height,0,
+                 GL_RED,GL_FLOAT,dep->data);
+
+    KineBot::GL::bind_texture(ctext,1);
+    glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,col->width,col->height,0,
+                 GL_RGBA,GL_UNSIGNED_BYTE,col->data);
+
+    if(filedump)
+    {
+        file_dump("dframe.raw",dep->data,dep->width*dep->height*sizeof(float));
+        file_dump("cframe.raw",col->data,col->width*col->height*sizeof(unsigned int));
+    }
 }
 
 /*!
@@ -112,7 +135,7 @@ void glfw_keyboard_event(GLFWwindow* win,int key,int/*scancode*/,int action,int/
 
 int main(int,char**)
 {
-    kinect_active.store(true);
+    kinect_active = true;
     filedump = false;
 
     //Create a GLFW context
@@ -122,33 +145,14 @@ int main(int,char**)
     //Create a Kinect context
     KineBot::FreenectContext *kctxt;
     try{
-        kctxt = new KineBot::FreenectContext;
+        kctxt = KineBot::freenect_alloc();
     }catch(std::runtime_error){
         fprintf(stderr,"System won't let me play with the Kinect :(\n");
-        kinect_active.store(false);
+        kinect_active = false;
     }
-
-    libfreenect2::FrameMap *frames = new libfreenect2::FrameMap;
-    std::future<void> kinect_future;
 
     if(kinect_active)
-    {
-        kctxt->kframes = (libfreenect2::Frame**)calloc(2,sizeof(libfreenect2::Frame*));
-
-        kinect_future = std::async(std::launch::async,[=](){
-            fprintf(stderr,"Starting Kinect loop!\n");
-            while(kinect_active.load())
-            {
-                kctxt->listener->waitForNewFrame(*frames);
-                kctxt->frame_mutex.lock();
-                kctxt->kframes[0] = (*frames)[libfreenect2::Frame::Depth];
-                kctxt->kframes[1] = (*frames)[libfreenect2::Frame::Color];
-                kctxt->new_frame.store(true);
-                fprintf(stderr,"Created new frame\n");
-                kctxt->frame_mutex.unlock();
-            }
-        });
-    }
+        KineBot::freenect_launch_async(kctxt);
 
     glClearColor(0.0f,0.f,0.f,1.f);
 
@@ -208,8 +212,8 @@ int main(int,char**)
 
     //TODO: Add uniform buffer for matrices, we might need it
 
-    KineBot::GL::KineTexture* ctext = KineBot::GL::load_texture("colortexture.jpg");
-    KineBot::GL::KineTexture* dtext = KineBot::GL::load_texture("depthtexture.jpg");
+    ctext = KineBot::GL::load_texture("colortexture.jpg");
+    dtext = KineBot::GL::load_texture("depthtexture.jpg");
 
     //Bind and load sample texture
     KineBot::GL::bind_texture(dtext,0);
@@ -242,42 +246,8 @@ int main(int,char**)
     {
         glClear(GL_COLOR_BUFFER_BIT);
 
-        if(kinect_active.load())
-        {
-            if(kctxt->kframes[0]&&kctxt->kframes[1]&&kctxt->new_frame.load()){
-                kctxt->frame_mutex.lock();
-
-
-                libfreenect2::Frame* dep = kctxt->kframes[0];
-                libfreenect2::Frame* col = kctxt->kframes[1];
-
-                float* depth_dat = (float*)dep->data;
-                KineBot::GL::bind_texture(dtext,0);
-                for(int i=0;i<dep->width*dep->height;i++)
-                    depth_dat[i] = depth_dat[i]/4000.0;
-                glTexImage2D(GL_TEXTURE_2D,0,GL_RED,dep->width,dep->height,0,
-                             GL_RED,GL_FLOAT,dep->data);
-
-                KineBot::GL::bind_texture(ctext,1);
-                glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,col->width,col->height,0,
-                             GL_RGBA,GL_UNSIGNED_BYTE,col->data);
-
-                if(filedump)
-                {
-                    file_dump("dframe.raw",dep->data,dep->width*dep->height*sizeof(float));
-                    file_dump("cframe.raw",col->data,col->width*col->height*sizeof(unsigned int));
-                }
-
-                kctxt->new_frame.store(false);
-                kctxt->frame_mutex.unlock();
-
-                std::async(std::launch::async,[=](){
-                    kctxt->frame_mutex.lock();
-                    kctxt->listener->release(*frames);
-                    kctxt->frame_mutex.unlock();
-                });
-            }
-        }
+        if(kinect_active)
+            KineBot::freenect_process_frame(kctxt,kinect_process_frame,2);
 
         rot = mouse_rotation;
         cam_ready = glm::translate(cam,camera_pos) * glm::mat4_cast(mouse_rotation);
@@ -295,10 +265,8 @@ int main(int,char**)
         fprintf(stderr,"Frames: %f\n",1.0/(glfwGetTime()-frametime));
         frametime = glfwGetTime();
     }
-    bool kinect_was_active = kinect_active.load();
-    kinect_active.store(false);
-    if(kinect_was_active)
-        kinect_future.get();
+    if(kinect_active)
+        KineBot::freenect_exit_async(kctxt);
 
     delete ctext;
     delete dtext;
