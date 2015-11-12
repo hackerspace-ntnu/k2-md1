@@ -2,6 +2,9 @@
 #include "graphics/glfw_types.h"
 #include "context/freenect_types.h"
 
+#include <future>
+#include <thread>
+
 #include <malloc.h>
 #include <string.h>
 #include <libfreenect2/libfreenect2.hpp>
@@ -18,7 +21,7 @@ static glm::vec3 camera_pos;
 static float     screen_gamma = 1.0;
 static float     screen_scale = 1.0;
 static float     screen_amp = 5.0;
-static bool      kinect_active;
+static std::atomic_bool kinect_active;
 static bool      filedump;
 
 void file_dump(const char* filename, const void* data_ptr, size_t data_size)
@@ -107,8 +110,9 @@ void glfw_keyboard_event(GLFWwindow* win,int key,int/*scancode*/,int action,int/
     }
 }
 
-int main(int,char**) try {
-    kinect_active = true;
+int main(int,char**)
+{
+    kinect_active.store(true);
     filedump = false;
 
     //Create a GLFW context
@@ -121,9 +125,30 @@ int main(int,char**) try {
         kctxt = new KineBot::FreenectContext;
     }catch(std::runtime_error){
         fprintf(stderr,"System won't let me play with the Kinect :(\n");
-        kinect_active = false;
+        kinect_active.store(false);
     }
 
+    libfreenect2::FrameMap *frames = new libfreenect2::FrameMap;
+    std::future<void> kinect_future;
+
+    if(kinect_active)
+    {
+        kctxt->kframes = (libfreenect2::Frame**)calloc(2,sizeof(libfreenect2::Frame*));
+
+        kinect_future = std::async(std::launch::async,[=](){
+            fprintf(stderr,"Starting Kinect loop!\n");
+            while(kinect_active.load())
+            {
+                kctxt->listener->waitForNewFrame(*frames);
+                kctxt->frame_mutex.lock();
+                kctxt->kframes[0] = (*frames)[libfreenect2::Frame::Depth];
+                kctxt->kframes[1] = (*frames)[libfreenect2::Frame::Color];
+                kctxt->new_frame.store(true);
+                fprintf(stderr,"Created new frame\n");
+                kctxt->frame_mutex.unlock();
+            }
+        });
+    }
 
     glClearColor(0.0f,0.f,0.f,1.f);
 
@@ -212,20 +237,20 @@ int main(int,char**) try {
 
     glfwShowWindow(gctxt.window);
     double frametime = glfwGetTime();
-    libfreenect2::Frame *dep = 0;
-    libfreenect2::Frame *col = 0;
-    libfreenect2::FrameMap frames;
     fprintf(stderr,"Now looping\n");
     while(!glfwWindowShouldClose(gctxt.window))
     {
         glClear(GL_COLOR_BUFFER_BIT);
 
-        if(kinect_active)
+        if(kinect_active.load())
         {
-            kctxt->listener->waitForNewFrame(frames);
-            dep = frames[libfreenect2::Frame::Depth];
-            col = frames[libfreenect2::Frame::Color];
-            if(dep&&col){
+            if(kctxt->kframes[0]&&kctxt->kframes[1]&&kctxt->new_frame.load()){
+                kctxt->frame_mutex.lock();
+
+
+                libfreenect2::Frame* dep = kctxt->kframes[0];
+                libfreenect2::Frame* col = kctxt->kframes[1];
+
                 float* depth_dat = (float*)dep->data;
                 KineBot::GL::bind_texture(dtext,0);
                 for(int i=0;i<dep->width*dep->height;i++)
@@ -236,17 +261,22 @@ int main(int,char**) try {
                 KineBot::GL::bind_texture(ctext,1);
                 glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,col->width,col->height,0,
                              GL_RGBA,GL_UNSIGNED_BYTE,col->data);
-            }
-            
-            if(filedump)
-            {
-                file_dump("dframe.raw",dep->data,dep->width*dep->height*sizeof(float));
-                file_dump("cframe.raw",col->data,col->width*col->height*sizeof(unsigned int));
-            }
 
-            dep = 0;
-            col = 0;
-            kctxt->listener->release(frames);
+                if(filedump)
+                {
+                    file_dump("dframe.raw",dep->data,dep->width*dep->height*sizeof(float));
+                    file_dump("cframe.raw",col->data,col->width*col->height*sizeof(unsigned int));
+                }
+
+                kctxt->new_frame.store(false);
+                kctxt->frame_mutex.unlock();
+
+                std::async(std::launch::async,[=](){
+                    kctxt->frame_mutex.lock();
+                    kctxt->listener->release(*frames);
+                    kctxt->frame_mutex.unlock();
+                });
+            }
         }
 
         rot = mouse_rotation;
@@ -264,8 +294,11 @@ int main(int,char**) try {
 
         fprintf(stderr,"Frames: %f\n",1.0/(glfwGetTime()-frametime));
         frametime = glfwGetTime();
-        
     }
+    bool kinect_was_active = kinect_active.load();
+    kinect_active.store(false);
+    if(kinect_was_active)
+        kinect_future.get();
 
     delete ctext;
     delete dtext;
@@ -276,10 +309,4 @@ int main(int,char**) try {
     delete kctxt;
 
     return 0;
-}
-catch(std::exception v)
-{
-    fprintf(stderr,"--------------------------\n"
-                   "Whoops! %s\n",v.what());
-    return 1;
 }

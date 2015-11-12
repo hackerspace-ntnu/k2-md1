@@ -7,7 +7,7 @@ LIST(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake_modules)
 set( KSrc
 #Add compilation units here
 deps/flextGL/flextGL.c
-src/firstkinect.cpp
+src/main.cpp
 src/context/freenect_types.cpp
 src/graphics/glcontext.cpp
 src/graphics/glfw_types.cpp
@@ -51,3 +51,5 @@ message("Freenect2 at: ${FREENECT2_LIBRARY}")
 add_executable(FreeBot ${KSrc})
 #Link the target
 target_link_libraries(FreeBot ${KLibs} ${FREENECT2_LIBRARY} ${GLFW3_LIBRARIES} ${GLFWLibs})
+
+target_compile_features(FreeBot PUBLIC cxx_constexpr)

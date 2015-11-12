@@ -2,10 +2,12 @@
 #define FREENECT_TYPES
 
 #include <stdexcept>
+#include <atomic>
 
 #include <stdio.h>
 
 #include <string>
+#include <mutex>
 #include <libfreenect2/libfreenect2.hpp>
 #include <libfreenect2/frame_listener_impl.h>
 
@@ -25,6 +27,12 @@ struct FreenectContext
     libfreenect2::Freenect2Device* device;
 
     libfreenect2::SyncMultiFrameListener* listener;
+
+    std::mutex frame_mutex;
+
+    libfreenect2::Frame** kframes;
+
+    std::atomic_bool new_frame;
 };
 
 class FreenectListener : public libfreenect2::FrameListener
