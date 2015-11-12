@@ -2,8 +2,6 @@
 #include "graphics/glfw_types.h"
 #include "context/freenect_types.h"
 
-#include <iostream>
-
 #include <malloc.h>
 #include <string.h>
 #include <libfreenect2/libfreenect2.hpp>
