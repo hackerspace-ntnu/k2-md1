@@ -9,6 +9,7 @@ set( KSrc
 deps/flextGL/flextGL.c
 src/firstkinect.cpp
 src/context/freenect_types.cpp
+src/graphics/glcontext.cpp
 src/graphics/glfw_types.cpp
 deps/stb/stb_image.h
 deps/glm

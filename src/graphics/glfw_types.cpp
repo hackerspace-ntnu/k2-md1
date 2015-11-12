@@ -5,6 +5,16 @@
 namespace KineBot{
 namespace GLFW{
 
+/*!
+ * \brief GLFW callback for resizing the GL viewport automatically
+ * \param w
+ * \param h
+ */
+void glfw_fb_resize(GLFWwindow*,int w,int h)
+{
+    glViewport(0,0,w,h);
+}
+
 GLFWContext::GLFWContext(int w, int h, const char* title)
 {
     if(!glfwInit())
@@ -18,6 +28,12 @@ GLFWContext::GLFWContext(int w, int h, const char* title)
 
     window = glfwCreateWindow(w,h,title,NULL,NULL);
     glfwMakeContextCurrent(window);
+    glfwSwapInterval(0);
+
+    if(!flextInit(window))
+        throw std::runtime_error("Failed to load flext!");
+
+    glfwSetFramebufferSizeCallback(window,glfw_fb_resize);
 }
 
 GLFWContext::~GLFWContext()

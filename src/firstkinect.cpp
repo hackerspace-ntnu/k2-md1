@@ -4,8 +4,6 @@
 
 #include <iostream>
 
-#define STB_IMAGE_IMPLEMENTATION
-#include "deps/stb/stb_image.h"
 #include <malloc.h>
 #include <string.h>
 #include <libfreenect2/libfreenect2.hpp>
@@ -23,22 +21,13 @@ static float     screen_gamma = 1.0;
 static float     screen_scale = 1.0;
 static float     screen_amp = 5.0;
 static bool      kinect_active;
+static bool      filedump;
 
 void file_dump(const char* filename, const void* data_ptr, size_t data_size)
 {
     FILE* outfile = fopen(filename,"wb");
     fwrite(data_ptr, sizeof(char), data_size, outfile);
     fclose(outfile);
-}
-
-/*!
- * \brief GLFW callback for resizing the GL viewport automatically
- * \param w
- * \param h
- */
-void glfw_fb_resize(GLFWwindow*,int w,int h)
-{
-    glViewport(0,0,w,h);
 }
 
 /*!
@@ -122,11 +111,10 @@ void glfw_keyboard_event(GLFWwindow* win,int key,int/*scancode*/,int action,int/
 
 int main(int,char**) try {
     kinect_active = true;
+    filedump = false;
 
     //Create a GLFW context
     KineBot::GLFW::GLFWContext gctxt(1280,720,"KinectBot");
-    glfwSwapInterval(0);
-    glfwSetFramebufferSizeCallback(gctxt.window,glfw_fb_resize);
     glfwSetKeyCallback(gctxt.window,glfw_keyboard_event);
 
     //Create a Kinect context
@@ -134,38 +122,23 @@ int main(int,char**) try {
     try{
         kctxt = new KineBot::FreenectContext;
     }catch(std::runtime_error){
+        fprintf(stderr,"System won't let me play with the Kinect :(\n");
         kinect_active = false;
     }
 
-    if(!flextInit(gctxt.window))
-        throw std::runtime_error("Failed to load Glad!");
-
-    fprintf(stderr,"Hello\n");
 
     glClearColor(0.0f,0.f,0.f,1.f);
+
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE);
     glEnable(0x8642); //GL_VERTEX_PROGRAM_POINT_SIZE
 
     //Load sample texture from file
-    int w = 0,h = 0;
-    FILE* depthtext = fopen("depthtexture.jpg","r");
-    unsigned char* img = stbi_load_from_file(depthtext,&w,&h,NULL,3);
-    fclose(depthtext);
-
-    int c_w = 0,c_h = 0;
-    FILE* coltext = fopen("colortexture.jpg","r");
-    unsigned char* c_img = stbi_load_from_file(coltext,&c_w,&c_h,NULL,3);
-    fclose(coltext);
 
     //Create a shader program
     GLuint program = KineBot::GL::create_program("shaders/vertex.vsh","shaders/fragment.fsh");
 
     glUseProgram(program);
-
-    //Create resources
-    GLuint textures[2];
-    glGenTextures(2,textures);
 
     GLuint vertexbuffers[2];
     glGenBuffers(2,vertexbuffers);
@@ -202,7 +175,7 @@ int main(int,char**) try {
     glBufferData(GL_ARRAY_BUFFER,coord_size,coords,GL_STATIC_DRAW);
     free(coords),
 
-    glBindBuffer(GL_ARRAY_BUFFER,vertexbuffers[1]);
+            glBindBuffer(GL_ARRAY_BUFFER,vertexbuffers[1]);
 
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,sizeof(glm::vec2),(void*)0);
@@ -212,31 +185,18 @@ int main(int,char**) try {
 
     //TODO: Add uniform buffer for matrices, we might need it
 
+    KineBot::GL::KineTexture* ctext = KineBot::GL::load_texture("colortexture.jpg");
+    KineBot::GL::KineTexture* dtext = KineBot::GL::load_texture("depthtexture.jpg");
+
     //Bind and load sample texture
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D,textures[0]);
-
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_LEVEL,0);
-
-    glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,w,h,0,GL_RGB,GL_UNSIGNED_BYTE,img);
-    free(img);
-
-    //Diffusion texture
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D,textures[1]);
-
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAX_LEVEL,0);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
-
-    glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,c_w,c_h,0,GL_RGB,GL_UNSIGNED_BYTE,c_img);
-    free(c_img);
+    KineBot::GL::bind_texture(dtext,0);
+    KineBot::GL::bind_texture(ctext,1);
 
     //Define uniforms
     glm::vec3 pos(0,0,0);
     glm::quat rot(2,0,0,0);
 
-//    glm::mat4 cam = glm::perspective(60.f,8.f/5.f,0.1f,100.f);
+    //    glm::mat4 cam = glm::perspective(60.f,8.f/5.f,0.1f,100.f);
     glm::mat4 cam = glm::ortho(0.f,30.f,20.f,0.f,0.f,100.f);
     cam = glm::scale(cam,glm::vec3(1,1,1));
     glm::mat4 cam_ready;
@@ -268,23 +228,24 @@ int main(int,char**) try {
             dep = frames[libfreenect2::Frame::Depth];
             col = frames[libfreenect2::Frame::Color];
             if(dep&&col){
-		float* depth_dat = (float*)dep->data;
-                glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D,textures[0]);
-		for(int i=0;i<dep->width*dep->height;i++)
-			depth_dat[i] = depth_dat[i]/4000.0;
+                float* depth_dat = (float*)dep->data;
+                KineBot::GL::bind_texture(dtext,0);
+                for(int i=0;i<dep->width*dep->height;i++)
+                    depth_dat[i] = depth_dat[i]/4000.0;
                 glTexImage2D(GL_TEXTURE_2D,0,GL_RED,dep->width,dep->height,0,
                              GL_RED,GL_FLOAT,dep->data);
 
-                glActiveTexture(GL_TEXTURE1);
-                glBindTexture(GL_TEXTURE_2D,textures[1]);
+                KineBot::GL::bind_texture(ctext,1);
                 glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,col->width,col->height,0,
                              GL_RGBA,GL_UNSIGNED_BYTE,col->data);
             }
             
-            file_dump("dframe.raw",dep->data,dep->width*dep->height*sizeof(float));
-            file_dump("cframe.raw",col->data,col->width*col->height*sizeof(unsigned int));
-            
+            if(filedump)
+            {
+                file_dump("dframe.raw",dep->data,dep->width*dep->height*sizeof(float));
+                file_dump("cframe.raw",col->data,col->width*col->height*sizeof(unsigned int));
+            }
+
             dep = 0;
             col = 0;
             kctxt->listener->release(frames);
@@ -308,7 +269,8 @@ int main(int,char**) try {
         
     }
 
-    glDeleteTextures(2,textures);
+    delete ctext;
+    delete dtext;
     glDeleteBuffers(2,vertexbuffers);
     glDeleteProgram(program);
     glDeleteVertexArrays(1,vertexarrays);
