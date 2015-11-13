@@ -262,7 +262,7 @@ int main(int,char**)
         glfwPollEvents();
         glfwSwapBuffers(gctxt.window);
 
-        fprintf(stderr,"Frames: %f\n",1.0/(glfwGetTime()-frametime));
+	fprintf(stderr,"Frametime: %f\n",(glfwGetTime()-frametime));
         frametime = glfwGetTime();
     }
     if(kinect_active)
@@ -274,7 +274,7 @@ int main(int,char**)
     glDeleteProgram(program);
     glDeleteVertexArrays(1,vertexarrays);
 
-    delete kctxt;
+    KineBot::freenect_free(kctxt);
 
     return 0;
 }

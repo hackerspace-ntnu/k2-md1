@@ -15,6 +15,7 @@ typedef void(*FreenectFrameProcessFunction)(libfreenect2::Frame**,size_t);
 struct FreenectContext;
 
 extern FreenectContext* freenect_alloc();
+extern void freenect_free(FreenectContext* kctxt);
 
 extern void freenect_launch_async(FreenectContext* kctxt);
 

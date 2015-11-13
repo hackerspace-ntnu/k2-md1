@@ -122,4 +122,9 @@ void freenect_exit_async(FreenectContext *kctxt)
     kctxt->exit_fun.get();
 }
 
+void freenect_free(FreenectContext *kctxt)
+{
+    delete kctxt;
+}
+
 }

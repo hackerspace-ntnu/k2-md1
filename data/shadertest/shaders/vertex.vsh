@@ -12,7 +12,7 @@ out float depthval;
 out vec2 tex;
 
 void main(){
-        float depth = texture(depthtex,texcoord).x;
+        float depth = length(texture(depthtex,texcoord).xyz);
         depth = 1.0-depth;
 
         depthval = depth;
