@@ -51,12 +51,8 @@ __kernel void downSampleSkipUndefined(__read_only image2d_t in, __write_only ima
 
 __kernel void calcGradient(__read_only image2d_t in, __write_only image2d_t out) {
 	int i = get_global_id(0), j = get_global_id(1);
-	int px = i-1, nx = i+1;
-	int py = j-1, ny = j+1;
-	if (px < 0) px = 0;
-	if (py < 0) py = 0;
-	if (nx >= get_global_size(0)) nx = get_global_size(0)-1;
-	if (ny >= get_global_size(0)) ny = get_global_size(1)-1;
+	int px = (i?i-1:0), nx = (i<get_global_size(0)-1 ? i+1 : i);
+	int py = (j?j-1:0), ny = (j<get_global_size(1)-1 ? j+1 : j);
 	
 	float dx = read_imagef(in, int_sampler, (int2)(nx, j)).x-
 		read_imagef(in, int_sampler, (int2)(px, j)).x;
@@ -69,9 +65,9 @@ __kernel void calcResidualAndJacobian(__read_only image2d_t I1,
 																			__read_only image2d_t Z1, 
 																			__read_only image2d_t I2, 
 																			__read_only image2d_t dI2, 
-																			__global __read_only float rotmat[12], 
-																			__global __write_only float*residual, 
-																			__global __write_only float*jacobian, 
+																			__constant float rotmat[12], 
+																			__global float*residual, 
+																			__global float*jacobian, 
 																			float Icx, 
 																			float Icy,
 																			float Ifx, 
@@ -82,9 +78,9 @@ __kernel void calcResidualAndJacobian(__read_only image2d_t I1,
 	//Deproject 3d point from I1 depth texture
 	float pz1 = read_imagef(Z1, int_sampler, ij).x;
 
-	residual[index] = 12345;
-	for (int i = 0; i < 6; i++)
-		jacobian[index*6+i] = 0;
+	residual[index] = 12345.f;
+	//for (int i = 0; i < 6; i++)
+	//	jacobian[index*6+i] = 0;
 	if (pz1 > 1e7) return;
 
 	float px1 = (ij.x-Icx)*pz1*iIfx;
@@ -109,13 +105,19 @@ __kernel void calcResidualAndJacobian(__read_only image2d_t I1,
 		float dI2x = dI2_.x*Ifx*.5f;
 		float dI2y = dI2_.y*Ifx*.5f;
 
-		int index6 = index*6;
+		vstore8((float8)(dI2x*iz, 
+										dI2y*iz, 
+										-(dI2x*x+dI2y*y)*izz, 
+										-dI2x*x*y*izz-dI2y*(1+y*y*izz), 
+										dI2x*(1+x*x*izz)+dI2y*x*y*izz, 
+										(dI2y*x-dI2x*y)*iz, 0, 0), index, jacobian);
+		/*int index6 = index*6;
 		jacobian[index6  ] = dI2x*iz;
 		jacobian[index6+1] = dI2y*iz;
 		jacobian[index6+2] =-(dI2x*x+dI2y*y)*izz;
 		jacobian[index6+3] =-dI2x*x*y*izz-dI2y*(1+y*y*izz);
 		jacobian[index6+4] = dI2x*(1+x*x*izz)+dI2y*x*y*izz;
-		jacobian[index6+5] = (dI2y*x-dI2x*y)*iz;
+		jacobian[index6+5] = (dI2y*x-dI2x*y)*iz;*/
 
 		//for (int k = 0; k < 6; k++)
 		//Ji[k] = bilin(J0+k*wh, px2, py2, Iw);
@@ -125,30 +127,30 @@ __kernel void calcResidualAndJacobian(__read_only image2d_t I1,
 	}
 }
 
-//Calculates ivar = 1/n sum(Ri^2(v+1)/(v+Ri^2)) iteratively for v = 5
+//Calculates ivar = 1/n sum(Ri^2(v+1)/(v+(ivar*Ri)^2)) iteratively for v = 5
 __kernel void calcVariance1(__global float*R, int len, __global float*ivar, __local float*tmp, __local int*tmp2, __global float*partsum, __global int*partcount) {
   float sum = 0;
 	int count = 0;
 	for (int i = get_global_id(0); i < len; i += get_global_size(0)) {
-		if (R[i] == 12345.f) 
-			count++;
-		else {
+		if (R[i] != 12345.f) {
 			float rr = R[i]*R[i];
 			sum += rr/(5.f+rr*ivar[0]);
+			count++;
 		}
 	}
 
   int li = get_local_id(0);
   tmp[li] = sum;
 	tmp2[li] = count;
-  barrier(CLK_LOCAL_MEM_FENCE);
 
   for (int offset = get_local_size(0)>>1; offset > 0; offset >>= 1) {
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+
     if (li < offset) {
 			tmp[li] += tmp[li+offset];
 			tmp2[li] += tmp2[li+offset];
 		}
-    barrier(CLK_LOCAL_MEM_FENCE);
   }
   if (li == 0) {
     partsum[get_group_id(0)] = tmp[0];
@@ -164,59 +166,90 @@ __kernel void calcVariance2(__global float*ivar, __global float*partsum, __globa
 	ivar[0] = count/(6.*sum);
 }
 
-__kernel void calcLinEq1(__global float*R, __global float*J, __global float*ivar, int len, __local float*localA, __local float*localb, __global float*partA, __global float*partb) {
-	int li = get_local_id(0);
-	__local float*myA = localA+li*21;
-	__local float*myb = localb+li*6;
-	for (int i = 0; i < 21; i++) myA[i] = 0;
-	for (int i = 0; i < 6; i++) myb[i] = 0;
+__kernel void calcLinEq1(__global float*R, __global float2*J, __global float*ivar, int len, __local float2*lds, __global float2*part) {
+	float2 my[16];
+	for (int i = 0; i < 16; i++) my[i] = (float2)(0,0);
 	for (int i = get_global_id(0); i < len; i += get_global_size(0)) {
 		if (R[i] != 12345.f) {
 			float rr = R[i]*R[i];
 			float W = 6./(5.f+rr*ivar[0]);
-			int c = 0;
-			for (int l = 0; l < 6; l++) {
-				float JiW = J[i*6+l]*W;
-				for (int k = 0; k <= l; k++)
-					myA[c++] += JiW*J[i*6+k];
-				myb[l] -= JiW*R[i];
-			}
+
+			float2 Ji0 = J[i*4];
+			float2 JiW0 = Ji0*W;
+			float2 Ji1 = J[i*4+1];
+			float2 JiW1 = Ji1*W;
+			float2 Ji2 = J[i*4+2];
+			float2 JiW2 = Ji2*W;
+
+			my[0] += JiW0*Ji0.x;
+			my[1] += JiW1*Ji0.x;
+			my[2] += JiW2*Ji0.x;
+			my[3].y += JiW0.y*Ji0.y;
+			my[4] += JiW1*Ji0.y;
+			my[5] += JiW2*Ji0.y;
+
+			my[6] += JiW1*Ji1.x;
+			my[7] += JiW2*Ji1.x;
+			my[8].y += JiW1.y*Ji1.y;
+			my[9] += JiW2*Ji1.y;
+
+			my[10] += JiW2*Ji2.x;
+			my[11].y += JiW2.y*Ji2.y;
+
+			my[12] -= JiW0*R[i];
+			my[13] -= JiW1*R[i];
+			my[14] -= JiW2*R[i];
 		}
 	}
 
-	barrier(CLK_LOCAL_MEM_FENCE);
-  for (int offset = get_local_size(0)>>1; offset > 0; offset >>= 1) {
-    if (li < offset) {
-			for (int i = 0; i < 21; i++) 
-				myA[i] += myA[i+offset*21];
-			for (int i = 0; i < 6; i++)
-				myb[i] += myb[i+offset*6];
-		}
+	int li = get_local_id(0)*16;
+	for (int i = 0; i < 16; i++) lds[li+i] = my[i];
+	
+  for (int offset = get_local_size(0)>>1<<4; offset > 15; offset >>= 1) {
+
     barrier(CLK_LOCAL_MEM_FENCE);
+
+    if (li < offset) {
+			for (int i = 0; i < 16; i++) 
+				lds[li+i] += lds[li+offset+i];
+		}
   }
+
   if (li == 0) {
-		int globid = get_group_id(0);
-		for (int i = 0; i < 21; i++) 
-			partA[globid*21+i] = myA[i];
-		for (int i = 0; i < 6; i++)
-			partb[globid*6+i] = myb[i];
+		int globid = get_group_id(0)*16;
+		for (int i = 0; i < 16; i++) 
+			part[globid+i] = lds[i];
 	}
 }
 
-__kernel void calcLinEq2(__global float*partA, __global float*partb, int len, __global float*A, __global float*b) {
-	for (int i = 0; i < 36; i++) A[i] = 0;
-	for (int i = 0; i < 6; i++) b[i] = 0;
-	int c = 0;
-	for (int i = 0; i < len; i++) {
-		for (int l = 0; l < 6; l++) {
-			for (int k = 0; k <= l; k++)
-				A[l*6+k] += partA[c++];
-			b[l] += partb[i*6+l];
-		}
+__kernel void calcLinEq2(__global float2*part, int len, __global float2*A, __global float2*b) {
+	for (int i = 0; i < 18; i++) A[i] = (float2)(0,0);
+	for (int i = 0; i < 3; i++) b[i] = (float2)(0,0);
+
+	for (int i = 0; i < len*16; i += 16) {
+		A[0] += part[i];
+		A[1] += part[i+1];
+		A[2] += part[i+2];
+		A[3].y += part[i+3].y;
+		A[4] += part[i+4];
+		A[5] += part[i+5];
+
+		A[7] += part[i+6];
+		A[8] += part[i+7];
+		A[10].y += part[i+8].y;
+		A[11] += part[i+9];
+
+		A[14] += part[i+10];
+		A[17].y += part[i+11].y;
+
+		b[0] += part[i+12];
+		b[1] += part[i+13];
+		b[2] += part[i+14];
 	}
+	__global float*fA = A;
 	for (int l = 0; l < 6; l++) 
 		for (int k = 0; k < l; k++) 
-			A[k*6+l] = A[l*6+k];
+		fA[l*6+k] = fA[k*6+l];
 }
 
 __kernel void solveLinEq(__global float*A, __global float*x, __global float*r) {

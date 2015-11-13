@@ -274,7 +274,7 @@ void findRotation(byte*I1_, float*Z1_, byte*I2_, float rotmat[12]) {
 			}
 			lastivar = ivar;
 
-			cout << 1./ivar << endl;
+			//cout << 1./ivar << endl;
 
 			for (int i = 0; i < Iw*Ih; i++) {
 				if (R[i] == 12345) {
@@ -306,7 +306,7 @@ void findRotation(byte*I1_, float*Z1_, byte*I2_, float rotmat[12]) {
 
 			for (int i = 0; i < wh; i++)
 				plotimg[i] = J[i*6+5]*.2;
-			plot(plotimg, Iw, Ih);
+			//plot(plotimg, Iw, Ih);
 
 			error /= errorc;
 			cout << error << endl << endl;
@@ -328,8 +328,8 @@ void findRotation(byte*I1_, float*Z1_, byte*I2_, float rotmat[12]) {
 			}
 			for (int i = 0; i < 6; i++) lastx[i] = -x[i];
 
-			for (int i = 0; i < 6; i++) cout << x[i] << ' ';
-			cout << endl;
+			//for (int i = 0; i < 6; i++) cout << x[i] << ' ';
+			//cout << endl;
 
 			updaterotmatAfter(rotmat, x);
 			/*for (int j = 0; j < 3; j++) {

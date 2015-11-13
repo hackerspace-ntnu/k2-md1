@@ -39,9 +39,9 @@ void plotR(cl::Buffer img, int w, int h) {
 
 void plotJ(cl::Buffer img, int w, int h) {
 	float*fimg = (float*)plotimg;
-	queue.enqueueReadBuffer(img, 1, 0, w*h*sizeof(float)*6, plotimg);
-	for (int i = 0; i < w*h; i++) fimg[i] = fimg[i*6+4];
-	plot(fimg, w, h, 160*.4);
+	queue.enqueueReadBuffer(img, 1, 0, w*h*sizeof(float)*8, plotimg);
+	for (int i = 0; i < w*h; i++) fimg[i] = fimg[i*8+4];
+	plot(fimg, w, h, 160*.0005);
 }
 
 void rotate(float*rotmat, float*x, float*r) {
@@ -98,11 +98,7 @@ int main() {
 	cl::Program program = createProgram("dvo.cl");
 	try {
 
-	float rotmat[12];
-
-	timeval ta, tb;
-	gettimeofday(&ta, NULL);
-
+		float rotmat[12];
 		
 	cl::Image2D gpu_I1(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, cl::ImageFormat(CL_INTENSITY, CL_UNORM_INT8), w, h, 0, I1);
 	cl::Image2D gpu_I2(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, cl::ImageFormat(CL_INTENSITY, CL_UNORM_INT8), w, h, 0, I2);
@@ -115,16 +111,15 @@ int main() {
 	cl::Image2D gpu_dI2(context, CL_MEM_READ_WRITE, cl::ImageFormat(CL_RG, CL_SNORM_INT8), w, h, 0, NULL);
 
 	cl::Buffer gpu_residual(context, CL_MEM_READ_WRITE, sizeof(float)*w*h);
-	cl::Buffer gpu_jacobian(context, CL_MEM_READ_WRITE, sizeof(float)*w*h*6);
+	cl::Buffer gpu_jacobian(context, CL_MEM_READ_WRITE, sizeof(float)*w*h*8);
 	float ivar = 1e-2;
 	cl::Buffer gpu_ivar(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float), &ivar);
 	
-	int groupsize = 16, groups = 16;
+	int groupsize = 1<<6, groups = 1<<5;
 	cl::Buffer gpu_partsums(context, CL_MEM_READ_WRITE, sizeof(float)*groups);
 	cl::Buffer gpu_partcount(context, CL_MEM_READ_WRITE, sizeof(float)*groups);
 
-	cl::Buffer gpu_partA(context, CL_MEM_READ_WRITE, sizeof(float)*groups*21);
-	cl::Buffer gpu_partb(context, CL_MEM_READ_WRITE, sizeof(float)*groups*6);
+	cl::Buffer gpu_part(context, CL_MEM_READ_WRITE, sizeof(float)*groups*32);
 
 	cl::Buffer gpu_A(context, CL_MEM_READ_WRITE, sizeof(float)*36);
 	cl::Buffer gpu_b(context, CL_MEM_READ_WRITE, sizeof(float)*6);
@@ -147,6 +142,8 @@ int main() {
 	cl::Kernel calcLinEq2(program, "calcLinEq2");
 	cl::Kernel solveLinEq(program, "solveLinEq");
 
+	timeval ta, tb;
+	gettimeofday(&ta, NULL);
 
 	for (int scale = 6; scale >= 0; scale--) {
 		float s = 1./(1<<scale);
@@ -199,6 +196,7 @@ int main() {
 			queue.enqueueNDRangeKernel(calcRAJ, cl::NullRange, cl::NDRange(w>>scale, h>>scale), cl::NullRange);
 
 			//plotR(gpu_residual, w>>scale, h>>scale);
+			//plotJ(gpu_jacobian, w>>scale, h>>scale);
 
 			calcVariance.setArg(0, gpu_residual);
 			calcVariance.setArg(1, sizeof(int), &wh);
@@ -219,7 +217,7 @@ int main() {
 				queue.enqueueTask(calcVariance2);
 
 				queue.enqueueReadBuffer(gpu_ivar, 1, 0, sizeof(float), &ivar);
-				if (i == 0 and ivar < lastivar) break;
+			 	if (i == 0 and ivar < lastivar) break;
 				if (fabs(ivar-lastivar) < fabs(1e-2*ivar)) break;
 				lastivar = ivar;
 			}
@@ -236,16 +234,13 @@ int main() {
 			calcLinEq.setArg(1, gpu_jacobian);
 			calcLinEq.setArg(2, gpu_ivar);
 			calcLinEq.setArg(3, sizeof(int), &wh);
-			calcLinEq.setArg(4, sizeof(float)*groupsize*21, NULL);
-			calcLinEq.setArg(5, sizeof(float)*groupsize*6, NULL);
-			calcLinEq.setArg(6, gpu_partA);
-			calcLinEq.setArg(7, gpu_partb);
+			calcLinEq.setArg(4, sizeof(float)*groupsize*32, NULL);
+			calcLinEq.setArg(5, gpu_part);
 
-			calcLinEq2.setArg(0, gpu_partA);
-			calcLinEq2.setArg(1, gpu_partb);
-			calcLinEq2.setArg(2, sizeof(int), &groups);
-			calcLinEq2.setArg(3, gpu_A);
-			calcLinEq2.setArg(4, gpu_b);
+			calcLinEq2.setArg(0, gpu_part);
+			calcLinEq2.setArg(1, sizeof(int), &groups);
+			calcLinEq2.setArg(2, gpu_A);
+			calcLinEq2.setArg(3, gpu_b);
 
 			solveLinEq.setArg(0, gpu_A);
 			solveLinEq.setArg(1, gpu_dXi);
@@ -253,16 +248,21 @@ int main() {
 
 			queue.enqueueNDRangeKernel(calcLinEq, cl::NullRange, cl::NDRange(groups*groupsize), cl::NDRange(groupsize));
 			queue.enqueueTask(calcLinEq2);
+
+			//float b[6];
+			//queue.enqueueReadBuffer(gpu_b, 1, 0, sizeof(float)*6, &b);
+
+			cout << error*1e4 << endl;
+			/*			for (int i = 0; i < 6; i++) {
+				for (int j = 0; j < 6; j++) cout << b[j] << ' ';
+				cout << endl;
+				}*/
+
 			queue.enqueueTask(solveLinEq);
 
 			float dXi[6];
 			queue.enqueueReadBuffer(gpu_dXi, 1, 0, sizeof(float)*6, &dXi);
 			for (int i = 0; i < 6; i++) idXi[i] = -dXi[i];
-
-			cout << error*1e4 << endl;
-			//for (int i = 0; i < 6; i++) 
-			//	cout << dXi[i] << ' ';
-			//cout << endl;
 
 			updaterotmatAfter(rotmat, dXi);
 			queue.enqueueWriteBuffer(gpu_rotmat, 1, 0, sizeof(float)*12, rotmat);

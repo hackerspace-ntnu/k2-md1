@@ -4,9 +4,9 @@
 #include <fstream>
 using namespace std;
 
-std::vector<cl::Device> devices;
-cl::Context context;
-cl::CommandQueue queue;
+static std::vector<cl::Device> devices;
+static cl::Context context;
+static cl::CommandQueue queue;
 
 void initCL() {
 	try {
@@ -35,7 +35,6 @@ cl::Program createProgram(std::string name) {
 	std::ifstream cl_file(name.c_str());
 	std::string cl_string(std::istreambuf_iterator<char>(cl_file), (std::istreambuf_iterator<char>()));
 	cl::Program::Sources source(1, std::make_pair(cl_string.c_str(), cl_string.length() + 1));
-	
 	// create program
 	cl::Program program(context, source);
 	// compile opencl source
@@ -46,6 +45,6 @@ cl::Program createProgram(std::string name) {
 		//std::cout << "Build Options:\n" << program.getBuildInfo<CL_PROGRAM_BUILD_OPTIONS>(devices[0]) << std::endl;
 		std::cout << "Build Error:\n" << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(devices[0]) << std::endl;
 		//throw std::runtime_error(std::string("Build Error:")+program.getBuildInfo<CL_PROGRAM_BUILD_LOG >(devices[0]));		
-		}
+	}
 	return program;
 }
