@@ -96,7 +96,7 @@ __kernel void calcResidualAndJacobian(__read_only image2d_t I1,
 	float px2 = x*Ifx*iz+Icx;
 	float py2 = y*Ifx*iz+Icy;
 	int ix = floor(px2), iy = floor(py2);
-	if (ix >= 0 and iy >= 0 and ix < get_global_size(0)-1 and iy < get_global_size(1)-1) {
+	if (ix >= 0 && iy >= 0 && ix < get_global_size(0)-1 && iy < get_global_size(1)-1) {
 		float2 p2 = (float2)(px2+.5f, py2+.5f);
 
 		//Calculate jacobian of I2
