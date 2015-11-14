@@ -4,6 +4,7 @@
 #include <libfreenect2/packet_pipeline.h>
 
 using namespace libfreenect2;
+using namespace std;
 
 static const int depth_width = 512, depth_height = 424, color_width = 1920, color_height = 1080; // Camera resolutions
 
@@ -13,11 +14,13 @@ struct MyKinect {
   FrameMap frames;
   int gotFrame;
   Freenect2Device*dev;
+  PacketPipeline*pipeline;
   MyKinect() {
-    listener = new SyncMultiFrameListener(SyncMultiFrameListener(Frame::Depth|Frame::Color));
     freenect2.enumerateDevices();
     std::string serial = freenect2.getDefaultDeviceSerialNumber();
-    dev = freenect2.openDevice(serial);
+    pipeline = new OpenCLPacketPipeline();
+    dev = freenect2.openDevice(serial, pipeline);
+    listener = new SyncMultiFrameListener(Frame::Depth|Frame::Color);
     dev->setColorFrameListener(listener);
     dev->setIrAndDepthFrameListener(listener);
     dev->start();
@@ -29,13 +32,16 @@ struct MyKinect {
     delete listener;
   }
   void getColorAndDepth(unsigned int**col, float**depth) {
-    if (gotFrame)
+    if (gotFrame) {
       listener->release(frames);
+      gotFrame = 0;
+    }
+    if (listener->hasNewFrame()) {
+      listener->waitForNewFrame(frames);
+      gotFrame = 1;
 
-    listener->waitForNewFrame(frames);
-    gotFrame = 1;
-
-    *depth = (float*)frames[Frame::Depth]->data;
-    *col = (unsigned int*)frames[Frame::Color]->data;
+      *depth = (float*)frames[Frame::Depth]->data;
+      *col = (unsigned int*)frames[Frame::Color]->data;
+    }
   }
 };
