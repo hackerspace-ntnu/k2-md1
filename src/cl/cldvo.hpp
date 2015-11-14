@@ -31,6 +31,22 @@ void updaterotmat2(float*rotmat, float*rot) {
   }
 }
 
+void to6DOF(float*rotmat, float*x) {
+	float trace = 0;
+	for (int i = 0; i < 3; i++) x[i] = rotmat[i*4+3], trace += rotmat[i*5];
+	float theta = acos((trace-1)*.5f);
+	float f = .5*theta/sin(theta);
+	if (theta < 1e-7) f = 0;
+	x[3] = f*(rotmat[3*4+2]-rotmat[3+2*4]);
+	x[4] = f*(rotmat[1*4+3]-rotmat[1+3*4]);
+	x[5] = f*(rotmat[2*4+1]-rotmat[2+1*4]);
+	for (int i = 0; i < 6; i++) 
+		if (x[i] != x[i]) {
+			cout << "Error in convertion to 6DOF" << endl;
+			return;
+		}
+}
+
 void updaterotmatAfter(float*rotmat, float*x) {
   //Calculate the rotation matrix of x (rot = exp(x))
   float theta = sqrt(x[3]*x[3]+x[4]*x[4]+x[5]*x[5]);
@@ -38,8 +54,8 @@ void updaterotmatAfter(float*rotmat, float*x) {
   float kx = x[3]*ilen, ky = x[4]*ilen, kz = x[5]*ilen;
   float sa = sin(theta), ca = 1-cos(theta);
   float rot[12] = {1-ca+kx*kx*ca, kx*ky*ca-kz*sa, kx*kz*ca+ky*sa, x[0], 
-		   kx*ky*ca+kz*sa, 1-ca+ky*ky*ca, ky*kz*ca-kx*sa, x[1], 
-		   kx*kz*ca-ky*sa, ky*kz*ca+kx*sa, 1-ca+kz*kz*ca, x[2]};
+									 kx*ky*ca+kz*sa, 1-ca+ky*ky*ca, ky*kz*ca-kx*sa, x[1], 
+									 kx*kz*ca-ky*sa, ky*kz*ca+kx*sa, 1-ca+kz*kz*ca, x[2]};
 
   updaterotmat2(rotmat, rot);
 }
@@ -49,17 +65,22 @@ struct Tracker {
   float rotmat[12];
   float result[12];
   cl::Image2D gpu_I1, gpu_I2, gpu_Z1, gpu_mipmapI1, gpu_mipmapI2, gpu_mipmapZ1, gpu_dI2;
-  cl::Buffer gpu_residual, gpu_jacobian, gpu_ivar, gpu_partsums, gpu_partcount, gpu_part, gpu_A, gpu_b, gpu_dXi, gpu_rotmat;
+  cl::Buffer gpu_residual, gpu_jacobian, gpu_ivar, gpu_partsums, gpu_partcount, gpu_part, gpu_A, gpu_b, gpu_dXi, gpu_rotmat, gpu_estimate, gpu_confidence;
 
-  cl::Kernel downSample, downSampleZ, calcGradient, calcRAJ, calcVariance1, calcVariance2, calcLinEq1, calcLinEq2, solveLinEq;
+  cl::Kernel downSample, downSampleZ, calcGradient, calcRAJ, calcVariance1, calcVariance2, calcLinEq1, calcLinEq2, solveLinEq, useEstimate;
 
   int groups, groupsize;
   float Icx, Icy, Ifx;	
   cl::Program program;
   int notfirst;
+	float confidence[6];
+	float lastmovement[6];
+
   Tracker(int w_, int h_) {
     w = w_, h = h_;
     Icx = w*.5-.5, Icy = h*.5-.5, Ifx = 1081*w/1920.f;
+
+		for (int i = 0; i < 6; i++) confidence[i] = .001, lastmovement[i] = 0;
 
     notfirst = 0;
     groups = 1<<5, groupsize = 1<<6;
@@ -69,7 +90,7 @@ struct Tracker {
     try {
 
       cl::ImageFormat unorm8(CL_INTENSITY, CL_UNORM_INT8), 
-	halffloat(CL_INTENSITY, CL_FLOAT);
+				halffloat(CL_INTENSITY, CL_FLOAT);
       gpu_I1 = cl::Image2D(context, CL_MEM_READ_ONLY, unorm8, w, h);
       gpu_I2 = cl::Image2D(context, CL_MEM_READ_ONLY, unorm8, w, h);
       gpu_Z1 = cl::Image2D(context, CL_MEM_READ_ONLY, halffloat, w, h);
@@ -96,6 +117,9 @@ struct Tracker {
 	
       gpu_rotmat = createBuffer(12);
 
+      gpu_estimate = createBuffer(6);
+      gpu_confidence = cl::Buffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)*6, confidence);
+
 
       downSample = cl::Kernel(program, "downSample");
       downSampleZ = cl::Kernel(program, "downSampleSkipUndefined");
@@ -109,8 +133,10 @@ struct Tracker {
       calcLinEq1 = cl::Kernel(program, "calcLinEq1");
       calcLinEq2 = cl::Kernel(program, "calcLinEq2");
       solveLinEq = cl::Kernel(program, "solveLinEq");
+
+      useEstimate = cl::Kernel(program, "useEstimate");
 			
-      	for (int i = 0; i < 12; i++) result[i] = i%5==0;	
+			for (int i = 0; i < 12; i++) result[i] = i%5==0;	
 			
     } catch (cl::Error e) {
       cout << endl << e.what() << " : " << e.err() << endl;
@@ -122,6 +148,7 @@ struct Tracker {
   void reset() {
     notfirst = 0;
     for (int i = 0; i < 12; i++) result[i] = i%5==0;
+		for (int i = 0; i < 6; i++) lastmovement[i] = 0;
   }
   void update(unsigned char*img, float*zbuf) {
     try {
@@ -142,133 +169,148 @@ struct Tracker {
 
       for (int scale = 6; scale >= 0; scale--) {
 
-	float s = 1./(1<<scale);
-	float Ifx_ = Ifx*s, iIfx = 1.f/Ifx_;
-	float Icx_ = (Icx+.5)*s-.5;
-	float Icy_ = (Icy+.5)*s-.5;
+				float s = 1./(1<<scale);
+				float Ifx_ = Ifx*s, iIfx = 1.f/Ifx_;
+				float Icx_ = (Icx+.5)*s-.5;
+				float Icy_ = (Icy+.5)*s-.5;
 
-	if (scale) {
-	  downSample.setArg(0, gpu_I1);
-	  downSample.setArg(1, gpu_mipmapI1);
-	  downSample.setArg(2, sizeof(int), &scale);
-	  queue.enqueueNDRangeKernel(downSample, cl::NullRange, cl::NDRange(w>>scale, h>>scale), cl::NullRange);
+				if (scale) {
+					downSample.setArg(0, gpu_I1);
+					downSample.setArg(1, gpu_mipmapI1);
+					downSample.setArg(2, sizeof(int), &scale);
+					queue.enqueueNDRangeKernel(downSample, cl::NullRange, cl::NDRange(w>>scale, h>>scale), cl::NullRange);
 
-	  downSample.setArg(0, gpu_I2);
-	  downSample.setArg(1, gpu_mipmapI2);
-	  downSample.setArg(2, sizeof(int), &scale);
-	  queue.enqueueNDRangeKernel(downSample, cl::NullRange, cl::NDRange(w>>scale, h>>scale), cl::NullRange);
+					downSample.setArg(0, gpu_I2);
+					downSample.setArg(1, gpu_mipmapI2);
+					downSample.setArg(2, sizeof(int), &scale);
+					queue.enqueueNDRangeKernel(downSample, cl::NullRange, cl::NDRange(w>>scale, h>>scale), cl::NullRange);
 
-	  downSampleZ.setArg(0, gpu_Z1);
-	  downSampleZ.setArg(1, gpu_mipmapZ1);
-	  downSampleZ.setArg(2, sizeof(int), &scale);
-	  queue.enqueueNDRangeKernel(downSampleZ, cl::NullRange, cl::NDRange(w>>scale, h>>scale), cl::NullRange);
-	}
+					downSampleZ.setArg(0, gpu_Z1);
+					downSampleZ.setArg(1, gpu_mipmapZ1);
+					downSampleZ.setArg(2, sizeof(int), &scale);
+					queue.enqueueNDRangeKernel(downSampleZ, cl::NullRange, cl::NDRange(w>>scale, h>>scale), cl::NullRange);
+				}
 
-	//plotGpu(gpu_mipmapI1, w>>scale, h>>scale);
+				//plotGpu(gpu_mipmapI1, w>>scale, h>>scale);
 
-	calcGradient.setArg(0, scale?gpu_mipmapI2:gpu_I2);
-	calcGradient.setArg(1, gpu_dI2);
+				calcGradient.setArg(0, scale?gpu_mipmapI2:gpu_I2);
+				calcGradient.setArg(1, gpu_dI2);
 	
-	queue.enqueueNDRangeKernel(calcGradient, cl::NullRange, cl::NDRange(w>>scale, h>>scale), cl::NullRange);
+				queue.enqueueNDRangeKernel(calcGradient, cl::NullRange, cl::NDRange(w>>scale, h>>scale), cl::NullRange);
 
-	int wh = (w>>scale)*(h>>scale);
+				int wh = (w>>scale)*(h>>scale);
 
-	float lasterror = 1e20;
-	float idXi[6];
-	for (int iter = 0; iter < 10; iter++) {
+				float lasterror = 1e20;
+				float idXi[6];
+				for (int iter = 0; iter < 10; iter++) {
 
-	  queue.enqueueWriteBuffer(gpu_rotmat, 1, 0, sizeof(float)*12, rotmat);
+					queue.enqueueWriteBuffer(gpu_rotmat, 1, 0, sizeof(float)*12, rotmat);
 
-	  calcRAJ.setArg(0, scale?gpu_mipmapI1:gpu_I1);
-	  calcRAJ.setArg(1, scale?gpu_mipmapZ1:gpu_Z1);
-	  calcRAJ.setArg(2, scale?gpu_mipmapI2:gpu_I2);
-	  calcRAJ.setArg(3, gpu_dI2);
-	  calcRAJ.setArg(4, gpu_rotmat);
-	  calcRAJ.setArg(5, gpu_residual);
-	  calcRAJ.setArg(6, gpu_jacobian);
-	  calcRAJ.setArg(7, sizeof(float), &Icx_);
-	  calcRAJ.setArg(8, sizeof(float), &Icy_);
-	  calcRAJ.setArg(9, sizeof(float), &Ifx_);
-	  calcRAJ.setArg(10, sizeof(float), &iIfx);
+					calcRAJ.setArg(0, scale?gpu_mipmapI1:gpu_I1);
+					calcRAJ.setArg(1, scale?gpu_mipmapZ1:gpu_Z1);
+					calcRAJ.setArg(2, scale?gpu_mipmapI2:gpu_I2);
+					calcRAJ.setArg(3, gpu_dI2);
+					calcRAJ.setArg(4, gpu_rotmat);
+					calcRAJ.setArg(5, gpu_residual);
+					calcRAJ.setArg(6, gpu_jacobian);
+					calcRAJ.setArg(7, sizeof(float), &Icx_);
+					calcRAJ.setArg(8, sizeof(float), &Icy_);
+					calcRAJ.setArg(9, sizeof(float), &Ifx_);
+					calcRAJ.setArg(10, sizeof(float), &iIfx);
 
-	  queue.enqueueNDRangeKernel(calcRAJ, cl::NullRange, cl::NDRange(w>>scale, h>>scale), cl::NullRange);
+					queue.enqueueNDRangeKernel(calcRAJ, cl::NullRange, cl::NDRange(w>>scale, h>>scale), cl::NullRange);
 
-	  //plotR(gpu_residual, w>>scale, h>>scale);
-	  //plotJ(gpu_jacobian, w>>scale, h>>scale);
+					//plotR(gpu_residual, w>>scale, h>>scale);
+					//plotJ(gpu_jacobian, w>>scale, h>>scale);
 
-	  calcVariance1.setArg(0, gpu_residual);
-	  calcVariance1.setArg(1, sizeof(int), &wh);
-	  calcVariance1.setArg(2, gpu_ivar);
-	  calcVariance1.setArg(3, sizeof(float)*groupsize, NULL);
-	  calcVariance1.setArg(4, sizeof(int)*groupsize, NULL);
-	  calcVariance1.setArg(5, gpu_partsums);
-	  calcVariance1.setArg(6, gpu_partcount);
+					calcVariance1.setArg(0, gpu_residual);
+					calcVariance1.setArg(1, sizeof(int), &wh);
+					calcVariance1.setArg(2, gpu_ivar);
+					calcVariance1.setArg(3, sizeof(float)*groupsize, NULL);
+					calcVariance1.setArg(4, sizeof(int)*groupsize, NULL);
+					calcVariance1.setArg(5, gpu_partsums);
+					calcVariance1.setArg(6, gpu_partcount);
 
-	  calcVariance2.setArg(0, gpu_ivar);
-	  calcVariance2.setArg(1, gpu_partsums);
-	  calcVariance2.setArg(2, gpu_partcount);
-	  calcVariance2.setArg(3, sizeof(int), &groups);
+					calcVariance2.setArg(0, gpu_ivar);
+					calcVariance2.setArg(1, gpu_partsums);
+					calcVariance2.setArg(2, gpu_partcount);
+					calcVariance2.setArg(3, sizeof(int), &groups);
 	
-	  float lastivar = ivar;
-	  for (int i = 0; i < 10; i++) {
-	    queue.enqueueNDRangeKernel(calcVariance1, cl::NullRange, cl::NDRange(groups*groupsize), cl::NDRange(groupsize));				
-	    queue.enqueueTask(calcVariance2);
+					float lastivar = ivar;
+					for (int i = 0; i < 10; i++) {
+						queue.enqueueNDRangeKernel(calcVariance1, cl::NullRange, cl::NDRange(groups*groupsize), cl::NDRange(groupsize));				
+						queue.enqueueTask(calcVariance2);
 
-	    queue.enqueueReadBuffer(gpu_ivar, 1, 0, sizeof(float), &ivar);
-	    if (i == 0 and ivar < lastivar) break;
-	    if (fabs(ivar-lastivar) < fabs(1e-2*ivar)) break;
-	    lastivar = ivar;
-	  }
+						queue.enqueueReadBuffer(gpu_ivar, 1, 0, sizeof(float), &ivar);
+						if (i == 0 and ivar < lastivar) break;
+						if (fabs(ivar-lastivar) < fabs(1e-2*ivar)) break;
+						lastivar = ivar;
+					}
 
-	  float error = 1.f/ivar;
-	  if (error < 1e-20 or error >= lasterror*.99) {
-	    //if (error < 1e-20 and scale == 0) cout << "Perfect!" << endl;
-	    //cout << "reset" << endl;
-	    updaterotmatAfter(rotmat, idXi);
-	    break;
-	  }
-	  lasterror = error;
+					float error = 1.f/ivar;
+					if (error < 1e-20 or error >= lasterror*.99) {
+						//if (error < 1e-20 and scale == 0) cout << "Perfect!" << endl;
+						//cout << "reset" << endl;
+						updaterotmatAfter(rotmat, idXi);
+						break;
+					}
+					lasterror = error;
 
-	  calcLinEq1.setArg(0, gpu_residual);
-	  calcLinEq1.setArg(1, gpu_jacobian);
-	  calcLinEq1.setArg(2, gpu_ivar);
-	  calcLinEq1.setArg(3, sizeof(int), &wh);
-	  calcLinEq1.setArg(4, sizeof(float)*groupsize*32, NULL);
-	  calcLinEq1.setArg(5, gpu_part);
+					calcLinEq1.setArg(0, gpu_residual);
+					calcLinEq1.setArg(1, gpu_jacobian);
+					calcLinEq1.setArg(2, gpu_ivar);
+					calcLinEq1.setArg(3, sizeof(int), &wh);
+					calcLinEq1.setArg(4, sizeof(float)*groupsize*32, NULL);
+					calcLinEq1.setArg(5, gpu_part);
 
-	  calcLinEq2.setArg(0, gpu_part);
-	  calcLinEq2.setArg(1, sizeof(int), &groups);
-	  calcLinEq2.setArg(2, gpu_A);
-	  calcLinEq2.setArg(3, gpu_b);
+					calcLinEq2.setArg(0, gpu_part);
+					calcLinEq2.setArg(1, sizeof(int), &groups);
+					calcLinEq2.setArg(2, gpu_A);
+					calcLinEq2.setArg(3, gpu_b);
 
-	  solveLinEq.setArg(0, gpu_A);
-	  solveLinEq.setArg(1, gpu_dXi);
-	  solveLinEq.setArg(2, gpu_b);
 
-	  queue.enqueueNDRangeKernel(calcLinEq1, cl::NullRange, cl::NDRange(groups*groupsize), cl::NDRange(groupsize));
-	  queue.enqueueTask(calcLinEq2);
+					float sofar[6], estimate[6];
+					to6DOF(rotmat, sofar);
+					for (int i = 0; i < 6; i++) estimate[i] = lastmovement[i]-sofar[i];
+					//for (int i = 0; i < 6; i++) cout << sofar[i] << endl;
 
-	  //float b[6];
-	  //queue.enqueueReadBuffer(gpu_b, 1, 0, sizeof(float)*6, &b);
+					queue.enqueueWriteBuffer(gpu_estimate, 1, 0, sizeof(float)*6, estimate);
 
-	  //cout << error*1e4 << endl;
-	  /*for (int i = 0; i < 6; i++) {
-	    for (int j = 0; j < 6; j++) cout << b[j] << ' ';
-	    cout << endl;
-	    }*/
+					useEstimate.setArg(0, gpu_A);
+					useEstimate.setArg(1, gpu_b);
+					useEstimate.setArg(2, gpu_estimate);
+					useEstimate.setArg(3, gpu_confidence);
 
-	  queue.enqueueTask(solveLinEq);
+					solveLinEq.setArg(0, gpu_A);
+					solveLinEq.setArg(1, gpu_dXi);
+					solveLinEq.setArg(2, gpu_b);
 
-	  float dXi[6];
-	  queue.enqueueReadBuffer(gpu_dXi, 1, 0, sizeof(float)*6, &dXi);
-	  for (int i = 0; i < 6; i++) idXi[i] = -dXi[i];
+					queue.enqueueNDRangeKernel(calcLinEq1, cl::NullRange, cl::NDRange(groups*groupsize), cl::NDRange(groupsize));
+					queue.enqueueTask(calcLinEq2);
 
-	  //for (int i = 0; i < 6; i++) 
-	  //  cout << dXi[i] << ' ';
-	  //cout << endl;
+					queue.enqueueTask(useEstimate);
+
+					//float b[6];
+					//queue.enqueueReadBuffer(gpu_b, 1, 0, sizeof(float)*6, &b);
+
+					//cout << error*1e4 << endl;
+					/*for (int i = 0; i < 6; i++) {
+						for (int j = 0; j < 6; j++) cout << b[j] << ' ';
+						cout << endl;
+						}*/
+
+					queue.enqueueTask(solveLinEq);
+
+					float dXi[6];
+					queue.enqueueReadBuffer(gpu_dXi, 1, 0, sizeof(float)*6, &dXi);
+					for (int i = 0; i < 6; i++) idXi[i] = -dXi[i];
+
+					//for (int i = 0; i < 6; i++) 
+					//  cout << dXi[i] << ' ';
+					//cout << endl;
 	  
-	  updaterotmatAfter(rotmat, dXi);
-	}
+					updaterotmatAfter(rotmat, dXi);
+				}
       }
     }  catch (cl::Error e) {
       cout << endl << e.what() << " : " << e.err() << endl;
@@ -276,6 +318,9 @@ struct Tracker {
     //cout << endl;
     for (int i = 0; i < 12; i++) 
       if (rotmat[i] != rotmat[i]) return;
+
+		to6DOF(rotmat, lastmovement);
+		
     updaterotmat2(result, rotmat);
   }
 };

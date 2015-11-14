@@ -252,6 +252,13 @@ __kernel void calcLinEq2(__global float2*part, int len, __global float2*A, __glo
 		fA[l*6+k] = fA[k*6+l];
 }
 
+__kernel void useEstimate(__global float*A, __global float*b, __global float estimate[6], __constant float confidence[6]) {
+	for (int i = 0; i < 6; i++) {
+		A[i*7] += confidence[i];
+		b[i] += estimate[i]*confidence[i];
+	}
+}
+
 __kernel void solveLinEq(__global float*A, __global float*x, __global float*r) {
 	const int n = 6;
 	float p[6];
