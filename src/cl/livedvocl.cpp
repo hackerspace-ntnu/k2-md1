@@ -7,7 +7,7 @@
 void drawSphere(Surface&sf, float*&depth, float px, float py, float pz, float r, float pers) {
   for (int i = 0; i < sf.w; i++) {
     for (int j = 0; j < sf.h; j++) {
-      float dx = i-sf.w*.5f, dy = j-sf.h*.5f, dz = pers;
+      float dx = i-(sf.w-1)*.5f, dy = j-(sf.h-1)*.5f, dz = pers;
       float pp = px*px+py*py+pz*pz;
       float dd = dx*dx+dy*dy+dz*dz;
       float dp = dx*px+dy*py+dz*pz;
@@ -37,7 +37,7 @@ void irotate(float*rotmat, float*x, float*r) {
 
 int main() {
   int sw = 1920/2, sh = 1080/2;
-  float color_pers = 1081/2;
+  float color_pers = 1081/2.;
   
   MyScreen screen(sw, sh);
   Surface sf(sw, sh);
@@ -49,7 +49,6 @@ int main() {
   Color*col;
 
   MyRegistration reg(kinect, sw, sh);
-
   Tracker tracker(sw, sh);
   
   float spherepos[3] = {0, 0, 1000}, newspherepos[3];
