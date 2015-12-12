@@ -2,6 +2,7 @@
 #include <libfreenect2/libfreenect2.hpp>
 #include <libfreenect2/frame_listener_impl.h>
 #include <libfreenect2/packet_pipeline.h>
+#include <unistd.h>
 
 using namespace libfreenect2;
 using namespace std;
@@ -42,6 +43,11 @@ struct MyKinect {
 
       *depth = (float*)frames[Frame::Depth]->data;
       *col = (unsigned int*)frames[Frame::Color]->data;
+    }
+  }
+  void waitForFrame() {
+    while (!listener->hasNewFrame()) {
+      usleep(30000);
     }
   }
 };

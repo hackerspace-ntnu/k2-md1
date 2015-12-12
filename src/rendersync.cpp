@@ -165,9 +165,9 @@ int main() {
     pos += up*dy*speed;
     pos += viewdir*dz*speed;
 
-
+    kinect.waitForFrame();
     kinect.getColorAndDepth((uint**)&col, &depth);
-    
+
     for (int i = 0; i < sw*sh; i++) sf.pixels[i] = 0, zbuf[i] = 1e9, zbuf2[i] = 1e9;
 
     getDepth(zbuf, lastx, lasty, thisx, thisy, depth, reg);
