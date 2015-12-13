@@ -7,7 +7,7 @@ void saveZB(float*z, int w, int h, int num) {
   fprintf(fp, "P5\n%d %d\n65535\n", w, h);
   for (int j = 0; j < h; j++) {
     for (int i = 0; i < w; i++) {
-      unsigned short s = z[i+j*w]*(1<<14);
+      unsigned short s = z[i+j*w]*((1<<14)/1000.f);
       fwrite(&s, 2, 1, fp);
     }
   }
@@ -24,7 +24,7 @@ void loadZB(float*z, int w, int h, int num) {
     for (int i = 0; i < w; i++) {
       unsigned short s;
       fread(&s, 2, 1, fp);
-      z[i+j*w] = s*(1.f/(1<<14));
+      z[i+j*w] = s*(1000.f/(1<<14));
     }
   }
   fclose(fp);
