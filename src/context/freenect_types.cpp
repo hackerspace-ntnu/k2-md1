@@ -4,6 +4,7 @@
 #include <thread>
 #include <libfreenect2/libfreenect2.hpp>
 #include <libfreenect2/frame_listener_impl.h>
+#include <libfreenect2/registration.h>
 
 #include <stdexcept>
 #include <atomic>
@@ -17,6 +18,11 @@
 namespace KineBot
 {
 
+void super_register_points(const libfreenect2::Registration* reg, libfreenect2::Frame* dframe, )
+{
+
+}
+
 struct FreenectContext
 {
     FreenectContext();
@@ -28,6 +34,8 @@ struct FreenectContext
     libfreenect2::SyncMultiFrameListener* listener;
 
     libfreenect2::FrameMap frames;
+
+    libfreenect2::Registration *reg;
 
     std::mutex frame_mutex;
 
@@ -56,11 +64,14 @@ FreenectContext::FreenectContext() :
     device->setColorFrameListener(listener);
     device->setIrAndDepthFrameListener(listener);
 
+    reg = new libfreenect2::Registration(device->getIrCameraParams(),device->getColorCameraParams());
+
     device->start();
 }
 
 FreenectContext::~FreenectContext()
 {
+    delete reg;
     delete listener;
     device->stop();
     device->close();
@@ -81,6 +92,7 @@ void freenect_process_frame(FreenectContext *context, FreenectFrameProcessFuncti
 
     if(context->new_frame.load()){
         context->frame_mutex.lock();
+
 
         fun(context->kframes,numFrames);
 

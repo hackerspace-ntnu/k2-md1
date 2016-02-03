@@ -1,16 +1,77 @@
 #ifndef FREENECT_TYPES
 #define FREENECT_TYPES
 
-#include <libfreenect2/libfreenect2.hpp>
-
 namespace KineBot
 {
-typedef unsigned int uint;
+using uint = unsigned int;
+using uint8 = unsigned char;
 
-typedef void(*FreenectFrameProcessFunction)(libfreenect2::Frame**,size_t);
+template<typename T>
+struct vec2
+{
+    vec2(T x, T y):x(x),y(y){}
+    union{
+        T x;
+        T u;
+    };
+    union{
+        T y;
+        T v;
+    };
+};
+
+template<typename T>
+struct vec3
+{
+    union{
+        T x;
+        T r;
+    };
+    union{
+        T y;
+        T g;
+    };
+    union{
+        T z;
+        T b;
+    };
+};
+
+struct rgb
+{
+    union{
+        struct
+        {
+            uint8 r;
+            uint8 g;
+            uint8 b;
+        };
+        uint i;
+    };
+};
+
+struct ColorDepthFrame
+{
+    uint dimensions[2];
+    float* depth;
+    rgb* color;
+
+    rgb& get_color(vec2<int> const& v)
+    {
+        return color[v.y*dimensions[0]+v.x];
+    }
+    float& get_depth(vec2<int> const& v)
+    {
+        return depth[v.y*dimensions[0]+v.x];
+    }
+};
+
+using FreenectFrameProcessFunction = void(*)(ColorDepthFrame&);
 
 /*!
- * \brief A structure containing the data for a Freenect device. Requires a valid Freenect device to be present on construction (selecting the default device) and for this device to initialize correctly. On destruction, this object will close the device.
+ * \brief A structure containing the data for a Freenect device.
+ * Requires a valid Freenect device to be present on construction (selecting the default device)
+ *  and for this device to initialize correctly. On destruction, this object will close the device.
  */
 struct FreenectContext;
 
