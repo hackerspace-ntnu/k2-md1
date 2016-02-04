@@ -105,6 +105,7 @@ FreenectContext *freenect_alloc()
 
 void freenect_process_frame(FreenectContext *context, FreenectFrameProcessFunction fun, size_t numFrames)
 {
+    return;
     if(!context->active.load())
         return;
     for(size_t i=0;i<numFrames;i++)
@@ -116,6 +117,9 @@ void freenect_process_frame(FreenectContext *context, FreenectFrameProcessFuncti
 
         RegisteredData data = super_register_points(context->reg,context->kframes[0],context->kframes[1]);
         fun(data.frame);
+
+        delete data.c;
+        delete data.d;
 
         context->new_frame.store(false);
         context->frame_mutex.unlock();
