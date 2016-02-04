@@ -18,9 +18,30 @@
 namespace KineBot
 {
 
-void super_register_points(const libfreenect2::Registration* reg, libfreenect2::Frame* dframe, )
+struct RegisteredData
 {
+    libfreenect2::Frame* c;
+    libfreenect2::Frame* d;
+    ColorDepthFrame frame;
+};
 
+RegisteredData super_register_points(const libfreenect2::Registration* reg, const libfreenect2::Frame* dframe, const libfreenect2::Frame* cframe)
+{
+    RegisteredData odata;
+    odata.c = new libfreenect2::Frame(cframe->width,cframe->height,cframe->bytes_per_pixel);
+    odata.d = new libfreenect2::Frame(dframe->width,dframe->height,dframe->bytes_per_pixel);
+    for(uint x=0;x<dframe->width;x++)
+        for(uint y=0;y<dframe->height;y++)
+        {
+            reg->apply(cframe,dframe,odata.c,odata.d);
+        }
+    odata.frame.color = (rgb*)odata.c->data;
+    odata.frame.depth = (float*)odata.d->data;
+    odata.frame.c.w = odata.c->width;
+    odata.frame.c.h = odata.c->height;
+    odata.frame.d.w = odata.d->width;
+    odata.frame.d.h = odata.d->height;
+    return odata;
 }
 
 struct FreenectContext
@@ -82,7 +103,7 @@ FreenectContext *freenect_alloc()
     return new FreenectContext;
 }
 
-void freenect_process_frame(FreenectContext *context, FreenectFrameProcessFunction fun, int numFrames)
+void freenect_process_frame(FreenectContext *context, FreenectFrameProcessFunction fun, size_t numFrames)
 {
     if(!context->active.load())
         return;
@@ -93,8 +114,8 @@ void freenect_process_frame(FreenectContext *context, FreenectFrameProcessFuncti
     if(context->new_frame.load()){
         context->frame_mutex.lock();
 
-
-        fun(context->kframes,numFrames);
+        RegisteredData data = super_register_points(context->reg,context->kframes[0],context->kframes[1]);
+        fun(data.frame);
 
         context->new_frame.store(false);
         context->frame_mutex.unlock();

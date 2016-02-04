@@ -1,6 +1,8 @@
 #ifndef FREENECT_TYPES
 #define FREENECT_TYPES
 
+#include <cstddef>
+
 namespace KineBot
 {
 using uint = unsigned int;
@@ -50,19 +52,26 @@ struct rgb
     };
 };
 
+struct ksize
+{
+    uint w;
+    uint h;
+};
+
 struct ColorDepthFrame
 {
-    uint dimensions[2];
+    ksize d;
+    ksize c;
     float* depth;
     rgb* color;
 
     rgb& get_color(vec2<int> const& v)
     {
-        return color[v.y*dimensions[0]+v.x];
+        return color[v.y*c.w+v.x];
     }
     float& get_depth(vec2<int> const& v)
     {
-        return depth[v.y*dimensions[0]+v.x];
+        return depth[v.y*d.w+v.x];
     }
 };
 
@@ -80,7 +89,7 @@ extern void freenect_free(FreenectContext* kctxt);
 
 extern void freenect_launch_async(FreenectContext* kctxt);
 
-extern void freenect_process_frame(FreenectContext* context, FreenectFrameProcessFunction fun, int numFrames);
+extern void freenect_process_frame(FreenectContext* context, FreenectFrameProcessFunction fun, size_t numFrames);
 
 extern void freenect_exit_async(FreenectContext* kctxt);
 

@@ -31,26 +31,24 @@ void file_dump(const char* filename, const void* data_ptr, size_t data_size)
     fclose(outfile);
 }
 
-void kinect_process_frame(libfreenect2::Frame** frames,size_t)
+void kinect_process_frame(KineBot::ColorDepthFrame& f)
 {
-    libfreenect2::Frame* dep = frames[0];
-    libfreenect2::Frame* col = frames[1];
-
-    float* depth_dat = (float*)dep->data;
     KineBot::GL::bind_texture(dtext,0);
-    for(int i=0;i<dep->width*dep->height;i++)
-        depth_dat[i] = depth_dat[i]/4000.0;
-    glTexImage2D(GL_TEXTURE_2D,0,GL_RED,dep->width,dep->height,0,
-                 GL_RED,GL_FLOAT,dep->data);
+    for(int i=0;i<f.d.w*f.d.h;i++)
+        f.depth[i] = f.depth[i]/4000.0;
+    glTexImage2D(GL_TEXTURE_2D,0,GL_RED,f.d.w,f.d.h,0,
+                 GL_RED,GL_FLOAT,f.depth);
 
     KineBot::GL::bind_texture(ctext,1);
-    glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,col->width,col->height,0,
-                 GL_RGBA,GL_UNSIGNED_BYTE,col->data);
+    glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,f.c.w,f.c.h,0,
+                 GL_RGBA,GL_UNSIGNED_BYTE,f.color);
 
     if(filedump)
     {
-        file_dump("dframe.raw",dep->data,dep->width*dep->height*sizeof(float));
-        file_dump("cframe.raw",col->data,col->width*col->height*sizeof(unsigned int));
+        file_dump("dframe.raw",f.depth,
+                  f.d.w*f.d.h*sizeof(float));
+        file_dump("cframe.raw",f.color,
+                  f.c.w*f.c.h*sizeof(unsigned int));
     }
 }
 
