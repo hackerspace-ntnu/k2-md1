@@ -19,7 +19,7 @@ struct MyKinect {
   MyKinect() {
     freenect2.enumerateDevices();
     std::string serial = freenect2.getDefaultDeviceSerialNumber();
-    pipeline = new OpenCLPacketPipeline();
+    pipeline = new OpenGLPacketPipeline();
     dev = freenect2.openDevice(serial, pipeline);
     listener = new SyncMultiFrameListener(Frame::Depth|Frame::Color);
     dev->setColorFrameListener(listener);
