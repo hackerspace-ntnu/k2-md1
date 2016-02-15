@@ -67,3 +67,23 @@ void loadIMG(unsigned char*I, int w, int h, int num) {
   }
   fclose(fp);
 }
+
+void loadSurface(Surface&sf, int w, int h, int num) {
+  char name[100];
+  sprintf(name, "recorded/%03dcol%dx%d.ppm", num, sf.w, sf.h);
+  FILE*fp = fopen(name, "r");
+  if (!fp) {
+    cout << "File not found :" << name << endl;
+    return;
+  }
+  int tmp;
+  fscanf(fp, "P6\n%d %d\n%d\n", &w, &h, &tmp);
+  for (int j = 0; j < h; j++) {
+    for (int i = 0; i < w; i++) {
+      sf.pixels[i+j*sf.w].r = fgetc(fp);
+      sf.pixels[i+j*sf.w].g = fgetc(fp);
+      sf.pixels[i+j*sf.w].b = fgetc(fp);
+    }
+  }
+  fclose(fp);
+}

@@ -113,7 +113,7 @@ __kernel void branch_fuse_old(__global unsigned int grid[],
 				backp *= proj->focal;
 				float z = read_imagef(depth, nearest, (int2)(ix, iy)).x;
 				if (z != 0.f) {
-					if (frontp < (z+threshold)*frontq and 
+					if (frontp < (z+threshold)*frontq && 
 							backp > (z-threshold)*backq) good++;
 					else bad++;
 				}
@@ -193,7 +193,7 @@ __kernel void branch_fuse2(__global unsigned int grid[],
 				if (front >= back) continue;
 				float z = read_imagef(depth, nearest, (float2)(ix, iy)).x;
 				if (z != 0.f) {
-					if (proj->focal*front < (z+threshold) and 
+					if (proj->focal*front < (z+threshold) && 
 							proj->focal*back > (z-threshold)) good++;
 					else bad++;
 				}

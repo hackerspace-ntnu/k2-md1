@@ -1,11 +1,11 @@
-#include "clinit.hpp"
+#include "../cl/clinit.hpp"
 #include <sys/time.h>
 #include <iostream>
 using std::cout;
 using std::endl;
 #include "identifyclerror.hpp"
 #include <cmath>
-#include "/home/test/hackerspace/mapbot/k2-md1/src/reconstruct/linalg.hpp"
+#include "../reconstruct/linalg.hpp"
 #if defined DEBUG
 #include "/home/test/hackerspace/mapbot/k2-md1/src/cl/visualizer.hpp"
 #endif
@@ -14,6 +14,11 @@ using std::endl;
 #include <algorithm>
 
 const int w = 512, h = w;
+
+int N_FRAMES = 478;
+const int iterframes = 100;
+const char*input_dir = "../reconstruct/recorded";
+
 
 #if defined DEBUG
 Color plotimg[w*h];
@@ -28,7 +33,7 @@ void plotGpu(cl::Image2D&img, int w, int h) {
 
 void loadZB(float*z, int w, int h, int num) {
   char name[100];
-  sprintf(name, "/home/test/hackerspace/mapbot/k2-md1/src/reconstruct/teamrocket/recorded/%03dzb%dx%d.ppm", num, w, h);
+  sprintf(name, "%s/%03dzb%dx%d.ppm", input_dir, num, w, h);
   FILE*fp = fopen(name, "r");
 	if (!fp) {
 		cout << "File not found: " << name << endl;
@@ -193,7 +198,13 @@ float overlap(se3 a, se3 b) {
 	return cos(theta)/dist;
 }
 
-int main() {
+int main(int argc, char**argv) {
+  if (argc > 1) {
+    sscanf(argv[1], "%d", &N_FRAMES);
+  } else {
+    cout << "Using " << N_FRAMES << " frames by default, change by running " << argv[0] << " <N frames>" << endl;
+  }
+  
 	initCL();
 
 #if defined DEBUG
@@ -210,7 +221,6 @@ int main() {
 		std::vector<SourceImg> frames;
 		frames.push_back(SourceImg(0));
 
-		const int iterframes = 100;
 		float Ab[iterframes*29];
 
 		float transform[12];
@@ -223,7 +233,7 @@ int main() {
 		}
 
 		int offset = 0;
-		int calcframes = 478;
+		int calcframes = N_FRAMES;
 		for (int newframe = 1; newframe < calcframes; newframe++) {
 			cout << "New frame: " << newframe << endl;
 			while (frames.size() > iterframes) {
@@ -317,17 +327,18 @@ int main() {
 			}
 		}
 
-		FILE*fp = fopen("/home/test/hackerspace/mapbot/k2-md1/src/reconstruct/teamviews.txt", "w");
+		FILE*fp = fopen("views.txt", "w");
 		for (int i = 0; i < calcframes; i++) {
 			se3 view = path[i]*-1;
 			view.exp(transform, 0);
 			//if (i)
 			//cout << var[i]-var[i-1] << endl;
-			fprintf(fp, "%f %f %f", transform[3], transform[7], transform[11]);
-			for (int k = 0; k < 3; k++)
-				for (int j = 0; j < 3; j++) 
-					fprintf(fp, " %f", transform[j+k*4]);
-			fprintf(fp, "\n");
+			for (int k = 0; k < 3; k++) {
+			  for (int j = 0; j < 3; j++) 
+			    fprintf(fp, " %f", transform[j+k*4]);
+			  fprintf(fp, " %f\n", transform[3+k*4]);
+			}
+			fprintf(fp, " %f %f %f %f\n\n", 0.0, 0.0, 0.0, 1.0);
 		}
 		fclose(fp);
 		return 0;

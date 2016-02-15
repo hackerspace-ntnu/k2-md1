@@ -1,4 +1,4 @@
-#include "clinit.hpp"
+#include "../cl/clinit.hpp"
 #include <sys/time.h>
 #include <iostream>
 using std::cout;
@@ -12,11 +12,13 @@ int operator-(const timeval&tb, const timeval&ta) {
 	return (tb.tv_sec-ta.tv_sec)*1000000+(tb.tv_usec-ta.tv_usec);
 }
 
+#define RECORDED_PATH "../reconstruct/recorded"
+
 const int w = 512, h = 424;
 
 void loadZB(float*z, int w, int h, int num) {
   char name[100];
-  sprintf(name, "/home/test/hackerspace/mapbot/k2-md1/src/reconstruct/teamrocket/recorded/%03dzb%dx%d.ppm", num, w, h);
+  sprintf(name, "%s/%03dzb%dx%d.ppm", RECORDED_PATH, num, w, h);
   FILE*fp = fopen(name, "r");
 	if (!fp) {
 		cout << "File not found: " << name << endl;
@@ -38,13 +40,13 @@ void loadZB(float*z, int w, int h, int num) {
 typedef unsigned int Color;
 
 void loadColorIMG(Color*raw_colors, int w, int h, int num) {
-	char name[100];
-  sprintf(name, "/home/test/hackerspace/mapbot/k2-md1/src/reconstruct/teamrocket/recorded/%03dcol%dx%d.ppm", num, w, h);
+  char name[100];
+  sprintf(name, "%s/%03dcol%dx%d.ppm", RECORDED_PATH, num, w, h);
   FILE*fp = fopen(name, "r");
-	if (!fp) {
-		cout << "File not found: " << name << endl;
-		return;
-	}
+  if (!fp) {
+    cout << "File not found: " << name << endl;
+    return;
+  }
   int tmp;
   fscanf(fp, "P6\n%d %d\n%d\n", &w, &h, &tmp);
   for (int j = 0; j < h; j++) {
@@ -107,7 +109,6 @@ int main() {
 				host_img[w*j+i] = raw[sw*((sh-h)/2+j)+(sw-w)/2+i] *.5;//scale here
 
 		device_depth = cl::Image2D(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, cl::ImageFormat(CL_R, CL_FLOAT), w, h, 0, host_img);
-
 
 		float transform[12];
 		for (int i = 0; i < 12; i++) transform[i] = i%5==0;

@@ -1,8 +1,10 @@
 #define __CL_ENABLE_EXCEPTIONS
-#include "CL/cl.hpp"
+#include <CL/cl.hpp>
 #include <iostream>
 #include <fstream>
-using namespace std;
+
+using std::cout;
+using std::endl;
 
 static std::vector<cl::Device> devices;
 static cl::Context context;
@@ -29,13 +31,13 @@ void initCL() {
   }
 }
 
-cl::Program createProgram(std::string name) {
+cl::Program createProgram(std::string name, const char*args = NULL) {
   std::ifstream cl_file(name.c_str());
   std::string cl_string(std::istreambuf_iterator<char>(cl_file), (std::istreambuf_iterator<char>()));
   cl::Program::Sources source(1, std::make_pair(cl_string.c_str(), cl_string.length() + 1));
   cl::Program program(context, source);
   try {
-    program.build(devices);
+    program.build(devices, args);
   } catch (cl::Error&e) {
     std::cout << "Build Error:\n" << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(devices[0]) << std::endl;
   }
