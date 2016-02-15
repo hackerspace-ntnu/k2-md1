@@ -7,6 +7,7 @@ void saveZB(float*z, int w, int h, int num) {
   fprintf(fp, "P5\n%d %d\n65535\n", w, h);
   for (int j = 0; j < h; j++) {
     for (int i = 0; i < w; i++) {
+      if (z[i+j*w] > 3990) z[i+j*w] = 0;
       unsigned short s = z[i+j*w]*((1<<14)/1000.f);
       fwrite(&s, 2, 1, fp);
     }
