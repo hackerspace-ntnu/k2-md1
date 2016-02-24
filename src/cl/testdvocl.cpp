@@ -1,6 +1,6 @@
-#include "clinit.hpp"
+#include "cl/clinit.hpp"
 #include <sys/time.h>
-#include "visualizer.hpp"
+#include "cl/visualizer.hpp"
 
 void openimg(const char*name, byte*img, int wh) {
 	FILE*fp = fopen(name, "r");

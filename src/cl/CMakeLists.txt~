@@ -1,0 +1,22 @@
+find_package ( OpenCL REQUIRED )
+
+include_directories ( ${OpenCL_INCLUDE_DIR} )
+
+message("OpenCL include directory: ${OpenCL_INCLUDE_DIR}")
+
+add_executable ( LiveDVO_CL livedvocl.cpp )
+add_executable ( TestDVO_CL testdvocl.cpp )
+add_executable ( TrackPoints trackpoints.cpp )
+
+target_link_libraries ( LiveDVO_CL
+	${OpenCL_LIBRARY}
+	${DEFAULT_LIBS}
+	)
+target_link_libraries ( TestDVO_CL
+	${OpenCL_LIBRARY}
+	${DEFAULT_LIBS}
+	)
+target_link_libraries ( TrackPoints
+	${OpenCL_LIBRARY}
+	${DEFAULT_LIBS}
+	)

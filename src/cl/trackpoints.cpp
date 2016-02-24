@@ -1,7 +1,7 @@
-#include "myregister.hpp"
-#include "cldvo.hpp"
-#include "../../deps/bat/bat.hpp"
-#include "../../deps/bat/vec3.hpp"
+#include "cl/myregister.hpp"
+#include "cl/cldvo.hpp"
+#include "bat/bat.hpp"
+#include "bat/vec3.hpp"
 #include <cmath>
 
 void irotate(float*rotmat, float*x, float*r) {
