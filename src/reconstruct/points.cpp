@@ -25,16 +25,49 @@ struct Point {
 int showall = 0, showframe = 0, frame = 0;
 
 void renderPoints(Surface&sf, float *zbuf, Point const*point, int const& points, vec3 const& pos, vec3 const& side, vec3 const& up, vec3 const& viewdir, float const&pers) {
+#ifdef MULTITHREADED_OPTIMIZATIONS
+    const int core_count = 64;
+
+    std::vector<std::future<void>> loop_points;
+
+    std::function<void(int,int)> clear_framebuffer = [sf,zbuf](int start ,int end)
+    {
+        for(int i=start;i<end;i++)
+        {
+            sf.pixels[i] = 0x503080;
+            zbuf[i] = 1e9;
+        }
+    };
+
+    int count_pixels = sf.w*sf.h;
+    int p_rest = count_pixels%core_count;
+
+    int p_index = 0;
+    for(int i=0;i<core_count;i++)
+    {
+        int count = (count_pixels-p_rest)/(core_count);
+        if(i==0)
+            count+=p_rest;
+        loop_points.push_back(std::async(std::launch::async,clear_framebuffer,p_index,p_index+count));
+        p_index += count;
+    }
+
+    for(int i=0;i<core_count;i++)
+        loop_points[i].get();
+
+#else
     for (int i = 0; i < sf.w*sf.h; i++) {
         sf.pixels[i] = 0x503080;
         zbuf[i] = 1e9;
     }
-
+#endif
 
     float ccx = sf.w*.5-.5, ccy = sf.h*.5-.5;
     int inc = !showall*19+1;
 
 #ifdef MULTITHREADED_OPTIMIZATIONS
+    loop_points.clear();
+
     std::function<void(int,int,int)> loop_fun = [ccx,ccy,sf,zbuf,point,pos,side,up,viewdir,pers](int start, int end,int inc)
     {
         for(int i=start;i<end;i+=inc)
@@ -58,8 +91,6 @@ void renderPoints(Surface&sf, float *zbuf, Point const*point, int const& points,
 
 //    loop_fun(0,points,inc);
 
-    std::vector<std::future<void>> loop_points;
-    const int core_count = 1;
 
     int rest = points%core_count;
 
