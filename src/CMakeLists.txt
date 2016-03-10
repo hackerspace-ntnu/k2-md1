@@ -1,7 +1,7 @@
 add_subdirectory ( cl )
 #add_subdirectory ( fusion )
 #add_subdirectory ( newclstuff )
-#add_subdirectory ( reconstruct )
+add_subdirectory ( reconstruct )
 #add_subdirectory ( tracker )
 
 add_executable ( FirstKinect firstkinect.cpp )
