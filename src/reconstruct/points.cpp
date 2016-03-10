@@ -8,6 +8,8 @@
 #include <vector>
 #include <functional>
 
+#define MULTITHREADED_OPTIMIZATIONS
+
 using namespace std;
 
 int N_FRAMES = 50;
@@ -200,3 +202,4 @@ int main(int argc, char**argv) {
         clock.tick(30);
     }
 }
+
