@@ -3,11 +3,12 @@
 #include <future>
 #include <vector>
 #include <functional>
+#include <atomic>
 
 #include <sys/mman.h>
 #include <sys/stat.h>
 
-#define MULTITHREADED_OPTIMIZATIONS
+//#define MULTITHREADED_OPTIMIZATIONS
 
 #include "../../deps/bat/bat.hpp"
 #include "reconstruct/trackball.hpp"
@@ -151,91 +152,93 @@ int main(int argc, char**argv) {
     float ccx = Iw*.5-.5, ccy = Ih*.5-.5, pers = 1081.37f/2;
     float Dcx = 255.559, Dcy = 207.671, Dpers = 365.463;
 
-    float rotmat[9];
-    float px, py, pz;
+    FILE*fp = fopen("views.txt", "r");
 
-//    FILE*fp = fopen("views.txt", "r");
+    std::vector<matrix_unit> matrix_data;
+    matrix_data.resize(N_FRAMES);
 
-    /* Get a file handle for the matrix file */
-    int view_fd = open("views.txt",O_RDONLY);
-
-    /* Terminate in error if not found */
-    if(view_fd<=0)
-        exit(-1);
-
-    size_t view_size = 0;
+    float __d;
+    for(int i=0;i<N_FRAMES;i++)
     {
-        struct stat view_s;
-        stat("views.txt",&view_s);
-        view_size = view_s.st_size;
+        matrix_unit& m = matrix_data[i];
+
+        for(int k=0;k<3;k++)
+        {
+            for(int j=0;j<3;j++)
+            {
+                fscanf(fp,"%f",&m.rotmat[k*3+j]);
+            }
+            fscanf(fp, "%f",&m.pos[k]);
+        }
+        for(int k=0;k<4;k++)
+            fscanf(fp,"%f",&__d);
     }
 
-    /* Memory map the matrix file */
-    void* view_ptr = mmap(nullptr,view_size,PROT_READ,MAP_PRIVATE|MAP_POPULATE,view_fd,0);
+    float ifx = 1.f/Dpers;
+    Point*point = new Point[300000000];
+    size_t*pstart = new size_t[N_FRAMES+1];
 
-    const char* matrixdata_source = (const char*)view_ptr;
+    std::atomic_size_t* points = new std::atomic_size_t;
+    points->store(0);
 
-    if(!view_ptr)
-        exit(-1);
+#ifdef MULTITHREADED_OPTIMIZATIONS
 
-    /* Matrix entry processor, parses the text into matrices */
-    std::function<void(const char*,size_t,matrix_unit&)> matrix_parse = [](
-            const char* data_offset,
-            size_t max_size,
-            matrix_unit& output)
+    matrix_unit* matrix_data_ptr = &matrix_data[0];
+
+
+    std::function<void(size_t,size_t)> frame_process = [sw,sh,matrix_data_ptr,Dw,Dh,pstart,points,Dcx,Dcy,ifx,point](size_t start, size_t end)
     {
-        size_t i=0,j=0,k=0;
-
-        /* Read tokens into memory reference given to us */
-        const char* t1; const char* t2 = data_offset;
-        for(j=0;j<3;j++)
-        {
-            for(k=0;k<3;k++)
-            {
-                t1 = strstr(t2," ");
-                output.rotmat[j*3+k] = strtof(t1,nullptr);
-
-                /* Parsing error */
-                if(t1>t2)
-                    break;
-            }
-            output.pos[k] = strtof(t1,nullptr);
-            t2 = strstr(t2,"\n");
-        }
-    };
-
-    /* Allocate space for matrix data */
-    std::vector<matrix_unit> matrix_data_backing;
-    matrix_data_backing.resize(N_FRAMES);
-
-    matrix_unit* matrix_data = &matrix_data_backing[0];
-
-    /* Matrix file processor, delegates task to the function above */
-    std::function<void(size_t,size_t)> matrix_processor = [matrix_data,view_size,matrixdata_source,matrix_parse](size_t start, size_t end)
-    {
-        const char* data_source = matrixdata_source;
+        Surface I(Dw, Dh);
+        float*zbuf = new float[sw*sh];
 
         for(size_t i=start;i<end;i++)
         {
-            /* We jump to an offset in the file, where we find the textual representation of a matrix */
-            const char* data_offset = data_source;
-            while(i<i*5&&data_offset&&(data_offset-data_source)<view_size)
-            {
-                data_offset = strstr(data_offset,"\n");
-                i++;
+            float dx, dy, dz;
+
+            matrix_unit& mdata = matrix_data_ptr[i];
+            dx = mdata.pos[0];
+            dy = mdata.pos[1];
+            dz = mdata.pos[2];
+            //if (i != 0 and i != 70) continue;
+
+            //cout << dx << ' ' << dy << ' ' << dz << endl;
+            //for (int k = 0; k < 9; k++) cout << rotmat[k] << endl;
+
+            loadZB(zbuf, Dw, Dh, i);
+    #if defined USE_COLOR
+            loadSurface(I, Dw, Dh, i);
+    #endif
+
+            pstart[i] = 0;
+            for (int l = 0; l < Dh; l++) {
+                for (int k = 0; k < Dw; k++) {
+                    float tz = zbuf[k+l*Dw];
+                    //if (tz < 500 && tz > 10) cout << tz << endl;
+                    if (tz > 1e8) continue;
+                    float tx = (k-Dcx)*tz*ifx, ty = (l-Dcy)*tz*ifx;
+                    float x = tx*mdata.rotmat[0]+ty*mdata.rotmat[1]+tz*mdata.rotmat[2]+dx*1000.f;
+                    float y = tx*mdata.rotmat[3]+ty*mdata.rotmat[4]+tz*mdata.rotmat[5]+dy*1000.f;
+                    float z = tx*mdata.rotmat[6]+ty*mdata.rotmat[7]+tz*mdata.rotmat[8]+dz*1000.f;
+    #if defined USE_COLOR
+                    Color col = I.pixels[k+l*Dw];
+                    if (col == 0) continue;
+    #else
+                    Color col = 0xffffff;
+    #endif	//if (rand()%10 == 0)
+                    point[points->fetch_add(1)] = Point(x, y, z, col);
+                }
             }
-            matrix_parse(data_offset,view_size,matrix_data[i]);
         }
+
+        delete[] zbuf;
     };
 
-    parallel_for(64UL,(long unsigned)N_FRAMES,matrix_processor);
+    parallel_for(4UL,(size_t)N_FRAMES,frame_process);
 
-    float ifx = 1.f/Dpers;
-    int points = 0;
-    Point*point = new Point[300000000];
-    int*pstart = new int[N_FRAMES+1];
+#else
+
     for (int i = 0; i < N_FRAMES; i++) {
-        float dx, dy, dz, dxyz[3];
+        float dx, dy, dz;
 
         matrix_unit& mdata = matrix_data[i];
         dx = mdata.pos[0];
@@ -251,7 +254,7 @@ int main(int argc, char**argv) {
         loadSurface(I, Dw, Dh, i);
 #endif
 
-        pstart[i] = points;
+        pstart[i] = points->load();
         for (int l = 0; l < Dh; l++) {
             for (int k = 0; k < Dw; k++) {
                 float tz = zbuf[k+l*Dw];
@@ -266,14 +269,18 @@ int main(int argc, char**argv) {
                 if (col == 0) continue;
 #else
                 Color col = 0xffffff;
-#endif	//if (rand()%10 == 0) 
-                point[points++] = Point(x, y, z, col);
+#endif	//if (rand()%10 == 0)
+                point[points->fetch_add(1)+1] = Point(x, y, z, col);
             }
         }
     }
-    pstart[N_FRAMES] = points;
+
+#endif
+
+    pstart[N_FRAMES] = points->load();
     //cout << points << endl;
-    munmap(view_ptr,view_size);
+
+    return 0;
 
     MyTrackball track(screen);
     track.speed = 30;
@@ -297,7 +304,7 @@ int main(int argc, char**argv) {
             frame = (frame%N_FRAMES+N_FRAMES)%N_FRAMES;
             renderPoints(sf, zbuf, point+pstart[frame], pstart[frame+1]-pstart[frame], pos, side, up, viewdir, pers);
         } else
-            renderPoints(sf, zbuf, point, points, pos, side, up, viewdir, pers);
+            renderPoints(sf, zbuf, point, points->load(), pos, side, up, viewdir, pers);
         //for (int i = 0; i < sw*sh; i += 2)
         //	sf.pixels[i] = I[i]*0x10101;
         screen.putSurface(sf);
