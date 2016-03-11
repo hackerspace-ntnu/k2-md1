@@ -1,14 +1,49 @@
 #include <iostream>
 
-#include "../../deps/bat/bat.hpp"
-#include "reconstruct/trackball.hpp"
-#include "reconstruct/dataio.hpp"
-
 #include <future>
 #include <vector>
 #include <functional>
 
+#include <sys/mman.h>
+#include <sys/stat.h>
+
 #define MULTITHREADED_OPTIMIZATIONS
+
+#include "../../deps/bat/bat.hpp"
+#include "reconstruct/trackball.hpp"
+#include "reconstruct/dataio.hpp"
+
+struct matrix_unit
+{
+    float rotmat[9];
+    float pos[3];
+};
+
+#ifdef MULTITHREADED_OPTIMIZATIONS
+template<typename T>
+inline void parallel_for(T punits,T datapoints,std::function<void(T,T)> fun)
+{
+    std::vector<std::future<void>> futuristic;
+
+    T rest = datapoints%punits;
+    T unit_points = (datapoints-rest)/punits;
+
+    T index = 0;
+
+    for(T i=0;i<punits;i++)
+    {
+        T unit_actual_points = unit_points;
+        if(i==0)
+            unit_actual_points += rest;
+        futuristic.push_back(std::async(std::launch::async,fun,index,index+unit_actual_points));
+        index += unit_actual_points;
+    }
+
+    for(std::future<void>& f : futuristic)
+        f.get();
+}
+#endif
+
 
 using namespace std;
 
@@ -28,8 +63,6 @@ void renderPoints(Surface&sf, float *zbuf, Point const*point, int const& points,
 #ifdef MULTITHREADED_OPTIMIZATIONS
     const int core_count = 64;
 
-    std::vector<std::future<void>> loop_points;
-
     std::function<void(int,int)> clear_framebuffer = [sf,zbuf](int start ,int end)
     {
         for(int i=start;i<end;i++)
@@ -39,21 +72,7 @@ void renderPoints(Surface&sf, float *zbuf, Point const*point, int const& points,
         }
     };
 
-    int count_pixels = sf.w*sf.h;
-    int p_rest = count_pixels%core_count;
-
-    int p_index = 0;
-    for(int i=0;i<core_count;i++)
-    {
-        int count = (count_pixels-p_rest)/(core_count);
-        if(i==0)
-            count+=p_rest;
-        loop_points.push_back(std::async(std::launch::async,clear_framebuffer,p_index,p_index+count));
-        p_index += count;
-    }
-
-    for(int i=0;i<core_count;i++)
-        loop_points[i].get();
+    parallel_for(core_count,sf.w*sf.h,clear_framebuffer);
 
 #else
     for (int i = 0; i < sf.w*sf.h; i++) {
@@ -66,9 +85,8 @@ void renderPoints(Surface&sf, float *zbuf, Point const*point, int const& points,
     int inc = !showall*19+1;
 
 #ifdef MULTITHREADED_OPTIMIZATIONS
-    loop_points.clear();
 
-    std::function<void(int,int,int)> loop_fun = [ccx,ccy,sf,zbuf,point,pos,side,up,viewdir,pers](int start, int end,int inc)
+    std::function<void(int,int)> draw_fun = [ccx,ccy,sf,zbuf,point,pos,side,up,viewdir,pers,inc](int start, int end)
     {
         for(int i=start;i<end;i+=inc)
         {
@@ -89,23 +107,8 @@ void renderPoints(Surface&sf, float *zbuf, Point const*point, int const& points,
         }
     };
 
-//    loop_fun(0,points,inc);
+    parallel_for(core_count,points,draw_fun);
 
-
-    int rest = points%core_count;
-
-    int index = 0;
-    for(int i=0;i<core_count;i++)
-    {
-        int count = (points-rest)/(core_count);
-        if(i==0)
-            count+=rest;
-        loop_points.push_back(std::async(std::launch::async,loop_fun,index,index+count,inc));
-        index += count;
-    }
-
-    for(int i=0;i<core_count;i++)
-        loop_points[i].get();
 #else
     for (int i = 0; i < points; i += inc) {
         float px = point[i].x, py = point[i].y, pz = point[i].z;
@@ -151,7 +154,81 @@ int main(int argc, char**argv) {
     float rotmat[9];
     float px, py, pz;
 
-    FILE*fp = fopen("views.txt", "r");
+//    FILE*fp = fopen("views.txt", "r");
+
+    /* Get a file handle for the matrix file */
+    int view_fd = open("views.txt",O_RDONLY);
+
+    /* Terminate in error if not found */
+    if(view_fd<=0)
+        exit(-1);
+
+    size_t view_size = 0;
+    {
+        struct stat view_s;
+        stat("views.txt",&view_s);
+        view_size = view_s.st_size;
+    }
+
+    /* Memory map the matrix file */
+    void* view_ptr = mmap(nullptr,view_size,PROT_READ,MAP_PRIVATE|MAP_POPULATE,view_fd,0);
+
+    const char* matrixdata_source = (const char*)view_ptr;
+
+    if(!view_ptr)
+        exit(-1);
+
+    /* Matrix entry processor, parses the text into matrices */
+    std::function<void(const char*,size_t,matrix_unit&)> matrix_parse = [](
+            const char* data_offset,
+            size_t max_size,
+            matrix_unit& output)
+    {
+        size_t i=0,j=0,k=0;
+
+        /* Read tokens into memory reference given to us */
+        const char* t1; const char* t2 = data_offset;
+        for(j=0;j<3;j++)
+        {
+            for(k=0;k<3;k++)
+            {
+                t1 = strstr(t2," ");
+                output.rotmat[j*3+k] = strtof(t1,nullptr);
+
+                /* Parsing error */
+                if(t1>t2)
+                    break;
+            }
+            output.pos[k] = strtof(t1,nullptr);
+            t2 = strstr(t2,"\n");
+        }
+    };
+
+    /* Allocate space for matrix data */
+    std::vector<matrix_unit> matrix_data_backing;
+    matrix_data_backing.resize(N_FRAMES);
+
+    matrix_unit* matrix_data = &matrix_data_backing[0];
+
+    /* Matrix file processor, delegates task to the function above */
+    std::function<void(size_t,size_t)> matrix_processor = [matrix_data,view_size,matrixdata_source,matrix_parse](size_t start, size_t end)
+    {
+        const char* data_source = matrixdata_source;
+
+        for(size_t i=start;i<end;i++)
+        {
+            /* We jump to an offset in the file, where we find the textual representation of a matrix */
+            const char* data_offset = data_source;
+            while(i<i*5&&data_offset&&(data_offset-data_source)<view_size)
+            {
+                data_offset = strstr(data_offset,"\n");
+                i++;
+            }
+            matrix_parse(data_offset,view_size,matrix_data[i]);
+        }
+    };
+
+    parallel_for(64UL,(long unsigned)N_FRAMES,matrix_processor);
 
     float ifx = 1.f/Dpers;
     int points = 0;
@@ -160,16 +237,10 @@ int main(int argc, char**argv) {
     for (int i = 0; i < N_FRAMES; i++) {
         float dx, dy, dz, dxyz[3];
 
-        for (int k = 0; k < 3; k++) {
-            for (int j = 0; j < 3; j++)
-                fscanf(fp, "%f", &rotmat[k*3+j]);
-            fscanf(fp, "%f", &dxyz[k]);
-        }
-        for (int k = 0; k < 4; k++)
-            fscanf(fp, "%f", &dx);
-        dx = dxyz[0];
-        dy = dxyz[1];
-        dz = dxyz[2];
+        matrix_unit& mdata = matrix_data[i];
+        dx = mdata.pos[0];
+        dy = mdata.pos[1];
+        dz = mdata.pos[2];
         //if (i != 0 and i != 70) continue;
 
         //cout << dx << ' ' << dy << ' ' << dz << endl;
@@ -187,9 +258,9 @@ int main(int argc, char**argv) {
                 //if (tz < 500 && tz > 10) cout << tz << endl;
                 if (tz > 1e8) continue;
                 float tx = (k-Dcx)*tz*ifx, ty = (l-Dcy)*tz*ifx;
-                float x = tx*rotmat[0]+ty*rotmat[1]+tz*rotmat[2]+dx*1000.f;
-                float y = tx*rotmat[3]+ty*rotmat[4]+tz*rotmat[5]+dy*1000.f;
-                float z = tx*rotmat[6]+ty*rotmat[7]+tz*rotmat[8]+dz*1000.f;
+                float x = tx*mdata.rotmat[0]+ty*mdata.rotmat[1]+tz*mdata.rotmat[2]+dx*1000.f;
+                float y = tx*mdata.rotmat[3]+ty*mdata.rotmat[4]+tz*mdata.rotmat[5]+dy*1000.f;
+                float z = tx*mdata.rotmat[6]+ty*mdata.rotmat[7]+tz*mdata.rotmat[8]+dz*1000.f;
 #if defined USE_COLOR
                 Color col = I.pixels[k+l*Dw];
                 if (col == 0) continue;
@@ -202,7 +273,7 @@ int main(int argc, char**argv) {
     }
     pstart[N_FRAMES] = points;
     //cout << points << endl;
-    fclose(fp);
+    munmap(view_ptr,view_size);
 
     MyTrackball track(screen);
     track.speed = 30;
