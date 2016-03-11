@@ -8,7 +8,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 
-//#define MULTITHREADED_OPTIMIZATIONS
+#define MULTITHREADED_OPTIMIZATIONS
 
 #include "../../deps/bat/bat.hpp"
 #include "reconstruct/trackball.hpp"
@@ -178,10 +178,11 @@ int main(int argc, char**argv) {
     Point*point = new Point[300000000];
     size_t*pstart = new size_t[N_FRAMES+1];
 
-    std::atomic_size_t* points = new std::atomic_size_t;
-    points->store(0);
 
 #ifdef MULTITHREADED_OPTIMIZATIONS
+
+    std::atomic_size_t* points = new std::atomic_size_t;
+    points->store(0);
 
     matrix_unit* matrix_data_ptr = &matrix_data[0];
 
@@ -209,7 +210,9 @@ int main(int argc, char**argv) {
             loadSurface(I, Dw, Dh, i);
     #endif
 
+            /* Did not care to implement slicing */
             pstart[i] = 0;
+
             for (int l = 0; l < Dh; l++) {
                 for (int k = 0; k < Dw; k++) {
                     float tz = zbuf[k+l*Dw];
@@ -235,7 +238,10 @@ int main(int argc, char**argv) {
 
     parallel_for(4UL,(size_t)N_FRAMES,frame_process);
 
+    pstart[N_FRAMES] = points->load();
 #else
+
+    size_t points = 0;
 
     for (int i = 0; i < N_FRAMES; i++) {
         float dx, dy, dz;
@@ -254,7 +260,7 @@ int main(int argc, char**argv) {
         loadSurface(I, Dw, Dh, i);
 #endif
 
-        pstart[i] = points->load();
+        pstart[i] = points;
         for (int l = 0; l < Dh; l++) {
             for (int k = 0; k < Dw; k++) {
                 float tz = zbuf[k+l*Dw];
@@ -270,17 +276,15 @@ int main(int argc, char**argv) {
 #else
                 Color col = 0xffffff;
 #endif	//if (rand()%10 == 0)
-                point[points->fetch_add(1)+1] = Point(x, y, z, col);
+                point[points++] = Point(x, y, z, col);
             }
         }
     }
 
+    pstart[N_FRAMES] = points;
 #endif
 
-    pstart[N_FRAMES] = points->load();
     //cout << points << endl;
-
-    return 0;
 
     MyTrackball track(screen);
     track.speed = 30;
@@ -304,7 +308,11 @@ int main(int argc, char**argv) {
             frame = (frame%N_FRAMES+N_FRAMES)%N_FRAMES;
             renderPoints(sf, zbuf, point+pstart[frame], pstart[frame+1]-pstart[frame], pos, side, up, viewdir, pers);
         } else
+#ifdef MULTITHREADED_OPTIMIZATIONS
             renderPoints(sf, zbuf, point, points->load(), pos, side, up, viewdir, pers);
+#else
+            renderPoints(sf, zbuf, point, points, pos, side, up, viewdir, pers);
+#endif
         //for (int i = 0; i < sw*sh; i += 2)
         //	sf.pixels[i] = I[i]*0x10101;
         screen.putSurface(sf);
